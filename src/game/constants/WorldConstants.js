@@ -1,8 +1,6 @@
 define(['ash'], function (Ash) {
 	
-	let WorldConstants = {
-
-		version: "0.7.1", // current world gen version
+	var WorldConstants = {
 	
 		LEVEL_NUMBER_MIN: 25,
 		LEVEL_NUMBER_MAX: 27,

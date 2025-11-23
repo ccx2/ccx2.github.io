@@ -1,49 +1,31 @@
-// result of world generation, used to create level and sector entities
 define(['ash'], function (Ash) {
 
-	let WorldVO = Ash.Class.extend({
+	var WorldVO = Ash.Class.extend({
 	
-		constructor: function (seed, version) {
+		constructor: function (seed, topLevel, bottomLevel) {
 			this.seed = seed;
-			this.version = version; // version originally generated in
-			this.topLevel = 1;
-			this.bottomLevel = 0;
+			this.topLevel = topLevel;
+			this.bottomLevel = bottomLevel;
 			
-			this.campPositions = {}; // level -> position
-			this.districts = {}; // level -> list of DistrictVO
-			this.examineSpotsPerLevel = {}; // level -> list of ids
-			this.features = []; // list of WorldFeatureVO
-			this.passagePositions = {}; // level -> { up: PositionVO, down: PositionVO }
-			this.passageTypes = {}; // level -> { up: string, down: string }
-			this.stages = []; // list of StageVO
+			this.features = [];
+			this.stages = [];
+			this.campPositions = [];
+			this.passagePositions = [];
+			this.districts = [];
 			
-			this.levels = {}; // level -> levelVO
-
-			this.resetCaches();
+			this.levels = [];
 		},
-
-		// called at the end of a world creation step
-		resetPaths: function () {
-			for (let l = this.topLevel; l >= this.bottomLevel; l--) {
-				let levelVO = this.levels[l];
-				if (levelVO) levelVO.resetPaths();
+		
+		clear: function () {
+			for (var l = this.topLevel; l >= this.bottomLevel; l--) {
+				var levelVO = this.levels[l];
+				levelVO.clear();
 			}
+			this.levels = [];
 		},
-
-		// called at the end of a world creation call
-		resetInternalData: function () {
-			for (let l = this.topLevel; l >= this.bottomLevel; l--) {
-				let levelVO = this.levels[l];
-				if (levelVO) levelVO.resetInternalData();
-			}
-		},
-
-		// called after entities have been generated
-		resetCaches: function () {
-			for (let l = this.topLevel; l >= this.bottomLevel; l--) {
-				let levelVO = this.levels[l];
-				if (levelVO) levelVO.resetCaches();
-			}
+		
+		addLevel: function (l) {
+			this.levels[l.level] = l;
 		},
 		
 		getLevel: function (l) {
@@ -81,6 +63,35 @@ define(['ash'], function (Ash) {
 			return result;
 		},
 		
+		getPath: function (pos1, pos2, blockedByBlockers, stage, anyPath) {
+			let map = anyPath ? this.pathsAny : this.pathsLatest;
+			if (!map) return null;
+			var key = this.getPathKey(pos1, pos2, blockedByBlockers, stage);
+			return map[key];
+		},
+		
+		addPath: function (pos1, pos2, blockedByBlockers, stage, path) {
+			var key = this.getPathKey(pos1, pos2, blockedByBlockers, stage);
+			if (!this.pathsAny) this.pathsAny = {};
+			if (!this.pathsLatest) this.pathsLatest = {};
+			this.pathsAny[key] = path;
+			this.pathsLatest[key] = path;
+		},
+		
+		resetPaths: function () {
+			this.pathsLatest = {};
+			for (var l = this.topLevel; l >= this.bottomLevel; l--) {
+				var levelVO = this.levels[l];
+				levelVO.resetPaths();
+			}
+		},
+		
+		getPathKey: function (pos1, pos2, blockedByBlockers, stage) {
+			var start = this.getPathStart(pos1, pos2);
+			var end = this.getPathEnd(pos1, pos2);
+			return start.toString() + "-" + end.toString() + (blockedByBlockers ? "-1" : "-0") + (stage ? stage : "-");
+		},
+		
 		getPathStart: function (pos1, pos2) {
 			if (pos2.toInt() < pos1.toInt()) {
 				return pos2;
@@ -95,18 +106,6 @@ define(['ash'], function (Ash) {
 			} else {
 				return pos2;
 			}
-		},
-
-		getPassageUp: function (level, sectorX, sectorY) {
-			var sectorVO = this.getLevel(level).getSector(sectorX, sectorY);
-			if (sectorVO.passageUpType) return sectorVO.passageUpType;
-			return null;
-		},
-
-		getPassageDown: function (level, sectorX, sectorY) {
-			var sectorVO = this.getLevel(level).getSector(sectorX, sectorY);
-			if (sectorVO.passageDownType) return sectorVO.passageDownType;
-			return null;
 		},
 		
 	});

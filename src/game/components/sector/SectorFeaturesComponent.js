@@ -19,12 +19,13 @@ define(
 		surface: false,
 		
 		// pathfinding attributes
-		isOnCriticalPath: false,
+		criticalPaths: [],
 		zone: null,
 		
 		// functionality
 		hazards: null,
 		campable: false,
+		notCampableReason: null,
 		hasSpring: false,
 		hasTradeConnectorSpot: false,
 		isInvestigatable: false,
@@ -40,6 +41,7 @@ define(
 		
 		constructor: function (level, features) {
 			this.level = level;
+			this.criticalPaths = features.criticalPaths || [];
 			this.zone = features.zone;
 			this.buildingDensity = features.buildingDensity;
 			this.wear = features.wear;
@@ -50,13 +52,13 @@ define(
 			this.surface = features.surface || false;
 			this.hazards = features.hazards || null;
 			this.campable = features.isCamp || false;
+			this.notCampableReason = features.notCampableReason || null;
 			this.resourcesScavengable = features.resourcesScavengable || new ResourcesVO();
 			this.resourcesCollectable = features.resourcesCollectable || new ResourcesVO();
 			this.itemsScavengeable = features.itemsScavengeable || [];
 			this.hasSpring = features.hasSpring || false;
 			this.hasTradeConnectorSpot = features.hasTradeConnectorSpot || false;
 			this.isInvestigatable = features.isInvestigatable || false;
-			this.isOnCriticalPath = features.isOnCriticalPath || false;
 			this.stashes = features.stashes || [];
 			this.waymarks = features.waymarks || [];
 			this.heapResource = features.heapResource || null;
@@ -65,6 +67,14 @@ define(
 		},
 		
 		// Secondary attributes
+		
+		isOnCriticalPath: function (type) {
+			if (type) {
+				return this.criticalPaths.indexOf(type) >= 0;
+			} else {
+				return this.criticalPaths.length > 0;
+			}
+		},
 		
 		canHaveCamp: function () {
 			return this.campable;

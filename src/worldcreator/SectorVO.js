@@ -1,72 +1,54 @@
 define(['ash', 'game/constants/WorldConstants', 'worldcreator/WorldCreatorConstants', 'worldcreator/WorldCreatorLogger', 'game/vos/ResourcesVO', 'game/vos/EnvironmentalHazardsVO'],
 function (Ash, WorldConstants, WorldCreatorConstants, WorldCreatorLogger, ResourcesVO, EnvironmentalHazardsVO) {
 
-	let SectorVO = Ash.Class.extend({
+	var SectorVO = Ash.Class.extend({
 	
-		constructor: function (position) {
+		constructor: function (position, isCampableLevel, notCampableReason) {
 			this.id = Math.floor(Math.random() * 100000);
 			this.position = position;
 			this.level = position.level;
+			this.campableLevel = isCampableLevel;
+			this.notCampableReason = notCampableReason;
 
-			this.buildingDensity = 0;
-			this.criticalPathTypes = [];
-			this.damage = 0;
-			this.examineSpots = [];
-			this.graffiti = 0;
-			this.hasClearableWorkshop = false;
-			this.hasBuildableWorkshop = false;
-			this.hasHeap = false;
-			this.hasRegularEnemies = false;
-			this.hasSpring = false;
-			this.hasTradeConnectorSpot = false;
-			this.hasWorkshop = false;
-			this.hazards = new EnvironmentalHazardsVO();
-			this.heapResource = null;
+			this.sectorType = null;
+			
 			this.isCamp = false;
-			this.isInvestigatable = false;
-			this.isPassageDown = false;
 			this.isPassageUp = false;
-			this.itemsScavengeable = [];
+			this.isPassageDown = false;
+			
+			this.requiredResources = new ResourcesVO();
+			this.criticalPaths = [];
+			this.criticalPathTypes = [];
+			this.criticalPathIndices = [];
 			this.locales = [];
 			this.movementBlockers = {};
-			this.numLocaleEnemies = {}; // localeID -> int
-			this.passageDownType = null;
 			this.passageUpType = null;
-			this.possibleEnemies = [];
-			this.resourcesCollectable = new ResourcesVO();
-			this.resourcesScavengable = new ResourcesVO();
+			this.passageDownType = null;
+			this.sunlit = false;
+			this.hazards = new EnvironmentalHazardsVO();
+			this.hasSpring = false;
+			this.hasWorkshop = false;
+			this.hasHeap = false;
+			this.hasTradeConnectorSpot = false;
+			this.isInvestigatable = false;
 			this.scavengeDifficulty = 5;
-			this.sectorType = null;
-			this.stage = null;
+			this.resourcesScavengable = new ResourcesVO();
+			this.resourcesCollectable = new ResourcesVO();
+			this.itemsScavengeable = [];
+			this.numLocaleEnemies = {};
+			this.possibleEnemies = [];
 			this.stashes = [];
-			this.sunlit = 0;
 			this.waymarks = [];
-			this.wear = 0;
-			this.workshopResource = null;
-			this.zone = null;
-			
-			this.resetCaches();
-		},
-		
-		resetInternalData: function () {
-			this.id = 0;
-		},
+			this.examineSpots = [];
 
-		resetCaches: function () {
+			this.workshopResource = null;
+			this.heapResource = null;
+			
 			this.distanceToCamp = -1;
-			this.isConnectionPoint = false;
-			delete this.pathID;
-			this.requiredFeatures = {};
-			this.requiredResources = new ResourcesVO();
-			this.resourcesAll = {};
 		},
 		
 		isOnCriticalPath: function (type) {
-			if (type) {
-				return this.criticalPathTypes.indexOf(type) >= 0;
-			} else{
-				return this.criticalPathTypes.length > 0;
-			}
+			return this.criticalPathTypes.indexOf(type) >= 0;
 		},
 		
 		isOnEarlyCriticalPath: function () {
@@ -83,8 +65,24 @@ function (Ash, WorldConstants, WorldCreatorConstants, WorldCreatorLogger, Resour
 			return false;
 		},
 		
+		updateCriticalPath: function () {
+			this.criticalPath = "-";
+			for (let i = 0; i < this.criticalPathTypes.length; i++) {
+				if (this.getCriticalPathPriority(this.criticalPathTypes[i] < this.getCriticalPathPriority(this.criticalPath))) {
+					var split = this.criticalPathTypes[i].split("_");
+					this.criticalPath = split[split.length - 1][0];
+				}
+			}
+		},
+		
 		addToCriticalPath: function (path) {
-			if (this.criticalPathTypes.indexOf(path.type) < 0) this.criticalPathTypes.push(path.type);
+			if (this.criticalPaths.indexOf(path) >= 0) return;
+			let index = path.length;
+			this.criticalPaths.push(path);
+			this.criticalPathTypes.push(path.type);
+			this.criticalPathIndices.push(index);
+			path.length++;
+			this.updateCriticalPath();
 		},
 		
 		addBlocker: function (direction, blockerType, canOverride) {

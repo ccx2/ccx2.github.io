@@ -57,7 +57,6 @@ define([
 			this.playerLocationNodes = engine.getNodeList(PlayerLocationNode);
 			
 			GlobalSignals.add(this, GlobalSignals.gameStateReadySignal, this.updateAll);
-			GlobalSignals.add(this, GlobalSignals.levelStateReadySignal, this.onLevelStateReady);
 			GlobalSignals.add(this, GlobalSignals.sectorScoutedSignal, this.onSectorScouted);
 			GlobalSignals.add(this, GlobalSignals.improvementBuiltSignal, this.updateAll);
 			GlobalSignals.add(this, GlobalSignals.campBuiltSignal, this.updateAllLevels);
@@ -105,11 +104,10 @@ define([
 			let passageUp = passagesComponent.passageUp;
 			let passageDown = passagesComponent.passageDown;
 			if (passageUp == null && passageDown == null) return;
-			
+
 			let positionComponent = entity.get(PositionComponent);
 			let improvementsComponent = entity.get(SectorImprovementsComponent);
 			let s = positionComponent.sectorId();
-
 			let passageUpBuilt =
 				improvementsComponent.getCount(improvementNames.passageUpStairs) > 0 ||
 				improvementsComponent.getCount(improvementNames.passageUpHole) > 0 ||
@@ -118,8 +116,8 @@ define([
 				improvementsComponent.getCount(improvementNames.passageDownStairs) > 0 ||
 				improvementsComponent.getCount(improvementNames.passageDownHole) > 0 ||
 				improvementsComponent.getCount(improvementNames.passageDownElevator) > 0;
-			
 			let levelEntity = GameGlobals.levelHelper.getLevelEntityForSector(entity);
+			
 			this.updateLevelPassagesComponent(levelEntity, s, passageUp, passageUpBuilt, passageDown, passageDownBuilt);
 		},
 
@@ -270,17 +268,13 @@ define([
 				}
 			}
 		},
-
-		onLevelStateReady: function (level) {
-			this.updateAllPassages();
-		},
 		
 		getLevelPreviousLevelsMaxHazard: function (level, hazardType) {
-			let levelOrdinal = GameGlobals.worldState.getLevelOrdinal(level);
+			let levelOrdinal = GameGlobals.gameState.getLevelOrdinal(level);
 			if (levelOrdinal == 1) return 0;
 			let result = 0;
 			for (let i = 1; i < levelOrdinal; i++) {
-				let previousLevel = GameGlobals.worldState.getLevelForOrdinal(i);
+				let previousLevel = GameGlobals.gameState.getLevelForOrdinal(i);
 				result = Math.max(result, GameGlobals.levelHelper.getLevelMaxHazard(previousLevel, hazardType));
 			}
 			return result;

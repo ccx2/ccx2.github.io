@@ -8,78 +8,19 @@ define([
 	'game/constants/LevelConstants',
 	'game/constants/PositionConstants',
 	'game/constants/SectorConstants',
+	'game/constants/UpgradeConstants',
 	'game/constants/WorldConstants',
-], function (Ash, GameGlobals, ResourcesVO, WorldCreatorRandom, WorldCreatorConstants, LevelConstants, PositionConstants, SectorConstants, WorldConstants) {
+], function (Ash, GameGlobals, ResourcesVO, WorldCreatorRandom, WorldCreatorConstants, LevelConstants, PositionConstants, SectorConstants, UpgradeConstants, WorldConstants) {
 
-	let WorldCreatorHelper = {
+	var WorldCreatorHelper = {
 		
 		camplessLevelOrdinals: {},
 		hardLevelOrdinals: {},
-
-		copyValueForAllSectors: function (levelTemplateVO, levelVO, key) {
-			if (!levelTemplateVO || !levelTemplateVO.sectors) return;
-
-			for (let i = 0; i < levelTemplateVO.sectors.length; i++) {
-				let sectorTemplateVO = levelTemplateVO.sectors[i];
-				if (sectorTemplateVO && sectorTemplateVO[key]) {
-					let sectorVO = levelVO.getSectorByPos(sectorTemplateVO.position);
-					if (sectorVO) sectorVO[key] = sectorTemplateVO[key];
-				}
-			}
-		},
-
-		getSectorsByTemplateFeature: function (levelTemplateVO, levelVO, feature) {
-			let result = [];
-			for (let i = 0; i < levelTemplateVO.sectors.length; i++) {
-				let sectorTemplateVO = levelTemplateVO.sectors[i];
-				if (sectorTemplateVO && sectorTemplateVO[feature]) {
-					let sectorVO = levelVO.getSectorByPos(sectorTemplateVO.position);
-					if (sectorVO) result.push(sectorVO);
-				}
-			}
-			return result;
-		},
-
-		getLocaleDataFromTemplate: function (levelTemplateVO, levelVO, localeType, filter) {
-			let result = [];
-			for (let i = 0; i < levelTemplateVO.sectors.length; i++) {
-				let sectorTemplateVO = levelTemplateVO.sectors[i];
-				if (sectorTemplateVO && sectorTemplateVO.locales) {
-					for (let j = 0; j < sectorTemplateVO.locales.length; j++) {
-						let localeVO = sectorTemplateVO.locales[j];
-						if (localeType && localeVO.type != localeType) continue;
-						if (filter && !filter(localeVO)) continue;
-						let sectorVO = levelVO.getSectorByPos(sectorTemplateVO.position);
-						if (sectorVO) {
-							result.push({ sectorVO: sectorVO, sectorTemplateVO: sectorTemplateVO, localeVO: localeVO });
-						}
-					}
-				}
-			}
-			return result;
-		},
-
-		getStashDataFromTemplate: function (levelTemplateVO, levelVO) {
-			let result = [];
-			for (let i = 0; i < levelTemplateVO.sectors.length; i++) {
-				let sectorTemplateVO = levelTemplateVO.sectors[i];
-				if (sectorTemplateVO && sectorTemplateVO.stashes && sectorTemplateVO.stashes.length > 0) {
-					let sectorVO = levelVO.getSectorByPos(sectorTemplateVO.position);
-					if (!sectorVO) continue;
-					for (let j = 0; j < sectorTemplateVO.stashes.length; j++) {
-						let stashVO = sectorTemplateVO.stashes[j];
-						result.push({ sectorVO: sectorVO, sectorTemplateVO: sectorTemplateVO, stashVO: stashVO });
-						break;
-					}
-				}
-			}
-			return result;
-		},
 		
 		addCriticalPath: function (worldVO, criticalPathVO) {
-			let path = WorldCreatorRandom.findPath(worldVO, criticalPathVO.startPos, criticalPathVO.endPos);
+			var path = WorldCreatorRandom.findPath(worldVO, criticalPathVO.startPos, criticalPathVO.endPos);
 			for (let j = 0; j < path.length; j++) {
-				let levelVO = worldVO.getLevel(path[j].level);
+				var levelVO = worldVO.getLevel(path[j].level);
 				levelVO.getSector(path[j].sectorX, path[j].sectorY).addToCriticalPath(criticalPathVO);
 			}
 		},
@@ -682,18 +623,18 @@ define([
 			return true;
 		},
 		
-		canHaveBlocker: function (levelVO, sectorVO1, sectorVO2, allowedCriticalPathTypes) {
+		canHaveBlocker: function (levelVO, sectorVO1, sectorVO2, allowedCriticalPaths) {
 			var distanceToCamp = Math.min(
 				WorldCreatorHelper.getQuickMinDistanceToCamp(levelVO, sectorVO1),
 				WorldCreatorHelper.getQuickMinDistanceToCamp(levelVO, sectorVO2)
 			);
 			if (distanceToCamp <= 1) return false;
 			
-			for (let i = 0; i < sectorVO1.criticalPathTypes.length; i++) {
-				var pathType = sectorVO1.criticalPathTypes[i];
-				if (allowedCriticalPathTypes && allowedCriticalPathTypes.indexOf(pathType) >= 0) continue;
-				for (let j = 0; j < sectorVO2.criticalPathTypes.length; j++) {
-					if (pathType === sectorVO2.criticalPathTypes[j]) {
+			for (let i = 0; i < sectorVO1.criticalPaths.length; i++) {
+				var pathType = sectorVO1.criticalPaths[i].type;
+				if (allowedCriticalPaths && allowedCriticalPaths.indexOf(pathType) >= 0) continue;
+				for (let j = 0; j < sectorVO2.criticalPaths.length; j++) {
+					if (pathType === sectorVO2.criticalPaths[j].type) {
 						return false;
 					}
 				}

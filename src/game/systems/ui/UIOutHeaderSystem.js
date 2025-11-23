@@ -171,7 +171,6 @@ define([
 			GlobalSignals.add(this, GlobalSignals.launchCompletedSignal, this.onLaunchCompleted);
 			GlobalSignals.add(this, GlobalSignals.popupClosedSignal, this.onPopupClosed);
 			GlobalSignals.add(this, GlobalSignals.windowResizedSignal, this.onWindowResized);
-			GlobalSignals.add(this, GlobalSignals.errorLoggedSignal, this.onErrorLogged);
 
 			this.generateStatsCallouts();
 			this.updateGameVersion();
@@ -1049,22 +1048,13 @@ define([
 
 		updateGameMsg: function () {
 			if (!this.engine) return;
-
+			let gameMsgKey = "";
 			let saveSystem = this.engine.getSystem(SaveSystem);
 			let timeStamp = new Date().getTime();
-			let showErrorSeconds = 10;
-			let showSaveMessageSeconds = 3;
-			
-			let gameMsgKey = "";
-			let isError = false;
 
-			if (GameConstants.isDebugVersion && this.lastError && timeStamp - this.lastErrorTimestamp < showErrorSeconds * 1000) {
-				gameMsgKey = this.lastError;
-				isError = true;
-			} else if (saveSystem && saveSystem.error) {
+			if (saveSystem && saveSystem.error) {
 				gameMsgKey = saveSystem.error;
-				isError = true;
-			} else if (saveSystem && saveSystem.lastDefaultSaveTimestamp > 0 && timeStamp - saveSystem.lastDefaultSaveTimestamp < showSaveMessageSeconds * 1000) {
+			} else if (saveSystem && saveSystem.lastDefaultSaveTimestamp > 0 && timeStamp - saveSystem.lastDefaultSaveTimestamp < 3 * 1000) {
 				gameMsgKey = "ui.meta.game_saved_message";
 			} else if (GameGlobals.gameState.isPaused) {
 				gameMsgKey = "ui.meta.game_paused_message";
@@ -1074,7 +1064,6 @@ define([
 
 			if (this.lastGameMsg !== gameMsgKey) {
 				this.elements.gameMsg.text(Text.t(gameMsgKey));
-				this.elements.gameMsg.toggleClass("warning", isError);
 				this.lastGameMsg = gameMsgKey;
 			}
 		},
@@ -1169,8 +1158,8 @@ define([
 			let playerPosition = this.playerStatsNodes.head.entity.get(PositionComponent);
 			let campComponent = this.currentLocationNodes.head.entity.get(CampComponent);
 			let isInCamp = playerPosition.inCamp;
-			let isGround = playerPosition.level == GameGlobals.worldState.getGroundLevel();
-			let isSurface = playerPosition.level == GameGlobals.worldState.getSurfaceLevel();
+			let isGround = playerPosition.level == GameGlobals.gameState.getGroundLevel();
+			let isSurface = playerPosition.level == GameGlobals.gameState.getSurfaceLevel();
 
 			let headerText; 
 			if (isInCamp && campComponent) { 
@@ -1222,8 +1211,7 @@ define([
 			if (GameGlobals.gameState.uiStatus.forceSunlit) sunlit = true;
 			if (GameGlobals.gameState.uiStatus.forceDark) sunlit = false;
 
-			// nice if theme transition can happen while loading new level when moving to a new level
-			// if (GameGlobals.gameState.uiStatus.isHidden) return;
+			if (GameGlobals.gameState.uiStatus.isHidden) return;
 			
 			this.updateThemeTo(sunlit);
 		},
@@ -1234,7 +1222,7 @@ define([
 				return;
 			}
 			
-			log.i("[ui] update theme to: " + (sunlit ? "sunlit" : "dark"));
+			log.w("[ui] update theme to: " + (sunlit ? "sunlit" : "dark"));
 			this.transitionTheme(wasSunlit, sunlit);
 		},
 		
@@ -1269,7 +1257,7 @@ define([
 			let visionStep = Math.round(visionFactor / 10);
 			
 			UIState.refreshState(this, "vision-step", visionStep, function () {
-				log.i("update vision step: " + visionStep, "ui");
+				log.i("update vision step: " + visionStep);
 				for (let i = 0; i <= 10; i++) {
 					this.elements.body.toggleClass("vision-step-" + i, i == visionStep);
 				}
@@ -1283,7 +1271,7 @@ define([
 			this.visionLevel = visionLevel;
 
 			UIState.refreshState(this, "vision-level", visionLevel, function () {
-				log.i("update vision level: " + visionLevel, "ui");
+				log.i("update vision level: " + visionLevel);
 				this.updatePageBackgroundColor();
 				for (let i = 1; i <= 4; i++) {
 					this.elements.body.toggleClass("vision-level-" + i, i == visionLevel);
@@ -1297,7 +1285,7 @@ define([
 			let sunlit = this.elements.body.hasClass("sunlit");
 			let backgroundColor = ColorConstants.getColor(sunlit, "bg_page_vision_level_" + visionLevel);
 
-			log.i("update page background color: sunlit:" + sunlit + " | visionLevel:" + visionLevel, "ui");
+			log.i("update page background color: sunlit:" + sunlit + " | visionLevel:" + visionLevel);
 			
 			$("body").css("background", backgroundColor);
 			
@@ -1404,8 +1392,8 @@ define([
 				base = "ui-level-unknown";
 				desc = "outside | unknown level";
 			} else {
-				var surfaceLevel = GameGlobals.worldState.getSurfaceLevel();
-				var groundLevel = GameGlobals.worldState.getGroundLevel();
+				var surfaceLevel = GameGlobals.gameState.getSurfaceLevel();
+				var groundLevel = GameGlobals.gameState.getGroundLevel();
 				if (position.level == surfaceLevel) {
 					base = "ui-level-sun";
 					desc = "outside | surface";
@@ -1632,12 +1620,7 @@ define([
 		onWindowResized: function () {
 			this.updateLayoutMode();
 			this.updateLayout();
-		},
-
-		onErrorLogged: function (msg) {
-			this.lastError = msg;
-			this.lastErrorTimestamp = new Date().getTime();
-		},
+		}
 	});
 
 	return UIOutHeaderSystem;

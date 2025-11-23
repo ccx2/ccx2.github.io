@@ -1,7 +1,6 @@
-// generates an overall stucture for the world, independent of specific levels or sectors, first step in world gen
+// Handles the first step of world generation, the abstract world template itself;
 define([
 	'ash',
-	'game/GameGlobals',
 	'worldcreator/WorldCreatorConstants',
 	'worldcreator/WorldCreatorHelper',
 	'worldcreator/WorldCreatorRandom',
@@ -10,36 +9,21 @@ define([
 	'worldcreator/StageVO',
 	'worldcreator/DistrictVO',
 	'game/vos/PositionVO',
-	'game/constants/MovementConstants',
 	'game/constants/SectorConstants',
 	'game/constants/PositionConstants',
+	'game/constants/StoryConstants',
 	'game/constants/WorldConstants',
-], function (
-	Ash, GameGlobals, 
-	WorldCreatorConstants, WorldCreatorHelper, WorldCreatorRandom, WorldCreatorLogger, 
-	WorldFeatureVO, StageVO, DistrictVO, PositionVO, 
-	MovementConstants, SectorConstants, PositionConstants, WorldConstants) {
+], function (Ash, WorldCreatorConstants, WorldCreatorHelper, WorldCreatorRandom, WorldCreatorLogger, WorldFeatureVO, StageVO, DistrictVO, PositionVO, SectorConstants, PositionConstants, StoryConstants, WorldConstants) {
 	
-	let WorldSkeletonGenerator = {
-
-		generate: function (seed, worldVO, worldTemplateVO) {
-			worldVO.topLevel = this.getTopLevel(seed, worldTemplateVO);
-			worldVO.bottomLevel = this.getBottomLevel(seed, worldTemplateVO);
-
+	let WorldGenerator = {
+		
+		prepareWorld: function (seed, worldVO) {
 			worldVO.features = worldVO.features.concat(this.generateHoles(seed));
 			worldVO.stages = this.generateStages(seed);
-			worldVO.campPositions = worldTemplateVO.campPositions || this.generateCampPositions(seed, worldVO.features);
-			worldVO.passagePositions = worldTemplateVO.passagePositions || this.generatePassagePositions(seed, worldVO.features, worldVO.campPositions);
-			worldVO.passageTypes = worldTemplateVO.passageTypes || this.generatePassageTypes(seed, worldVO);
+			worldVO.campPositions = this.generateCampPositions(seed, worldVO.features);
+			worldVO.passagePositions = this.generatePassagePositions(seed, worldVO.features, worldVO.campPositions);
 			worldVO.districts = this.generateDistricts(seed, worldVO.features);
-		},
-
-		getTopLevel: function (seed, worldTemplateVO) {
-			return worldTemplateVO.topLevel || WorldCreatorHelper.getHighestLevel(seed);
-		},
-
-		getBottomLevel: function (seed, worldTemplateVO) {
-			return worldTemplateVO.bottomLevel || worldTemplateVO.bottomLevel === 0 ? worldTemplateVO.bottomLevel : WorldCreatorHelper.getBottomLevel(seed);
+			worldVO.examineSpotsPerLevel = this.generateExamineSpotsPerLevel(seed);
 		},
 		
 		generateHoles: function (seed) {
@@ -107,7 +91,7 @@ define([
 					if (l == 13) {
 						position = new PositionVO(l, 0, 0);
 					} else {
-						var isValid = function (pos) { return WorldSkeletonGenerator.isValidCampPos(seed, pos, positionsByLevel, features); };
+						var isValid = function (pos) { return WorldGenerator.isValidCampPos(seed, pos, positionsByLevel, features); };
 						position = WorldCreatorRandom.randomSectorPositionWithCheck(seed % 10 + (l+10) * 55, "camp pos", l, maxCenterDist, center, 0, isValid);
 					}
 				}
@@ -117,10 +101,10 @@ define([
 		},
 		
 		generatePassagePositions: function (seed, features, campPositions) {
-			let result = {};
-			let topLevel = WorldCreatorHelper.getHighestLevel(seed);
-			let bottomLevel = WorldCreatorHelper.getBottomLevel(seed);
-			for (let l = topLevel; l >= bottomLevel; l--) {
+			let result = [];
+			var topLevel = WorldCreatorHelper.getHighestLevel(seed);
+			var bottomLevel = WorldCreatorHelper.getBottomLevel(seed);
+			for (var l = topLevel; l >= bottomLevel; l--) {
 				var campThisUp = this.getNextCampPosUp(seed, campPositions, l, true);
 				var campPosDown = this.getNextCampPosDown(seed, campPositions, l, false);
 				var previousDown = l == topLevel ? null : result[l+1].down;
@@ -131,25 +115,30 @@ define([
 			return result;
 		},
 
-		generatePassageTypes: function (seed, worldVO) {
-			let result = {};
-			let topLevel = WorldCreatorHelper.getHighestLevel(seed);
-			let bottomLevel = WorldCreatorHelper.getBottomLevel(seed);
-			for (let l = topLevel; l >= bottomLevel; l--) {
-				let up = this.getPassageUpType(seed, worldVO, l, result);
-				let down = this.getPassageDownType(seed, worldVO, l);
-				result[l] = { up: up, down: down };
+		generateExamineSpotsPerLevel: function (seed) {
+			let result = {}; // level => [ id ] 
+			let spotDefinitions = StoryConstants.sectorExamineSpots;
+			for (let i = 0; i < spotDefinitions.length; i++) {
+				let def = spotDefinitions[i];
+				let campOrdinal = def.positionParams.campOrdinal;
+				let levels = WorldCreatorHelper.getLevelsForCamp(seed, campOrdinal);
+				let levelIndex = def.positionParams.levelIndex;
+				let level = typeof levelIndex === "undefined" ?
+					WorldCreatorRandom.getRandomItemFromArray(seed, levels) :
+					levels[Math.min(levelIndex, levels.length - 1)];
+				if (!result[level]) result[level] = [];
+				result[level].push(def.id);
 			}
 			return result;
 		},
 		
 		generateDistricts: function (seed, features) {
-			let result = {};
-			let topLevel = WorldCreatorHelper.getHighestLevel(seed);
-			let bottomLevel = WorldCreatorHelper.getBottomLevel(seed);
+			let result = [];
+			var topLevel = WorldCreatorHelper.getHighestLevel(seed);
+			var bottomLevel = WorldCreatorHelper.getBottomLevel(seed);
 			
 			// districts on specific levels
-			for (let l = topLevel; l >= bottomLevel; l--) {
+			for (var l = topLevel; l >= bottomLevel; l--) {
 				result[l] = [];
 				if (l == 14) {
 					this.generateDistrict(seed, result, SectorConstants.SECTOR_TYPE_INDUSTRIAL, l, 0, 0, 8, 8);
@@ -158,7 +147,7 @@ define([
 			
 			// districts around features
 			for (let i = 0; i < features.length; i++) {
-				let feature = features[i];
+				var feature = features[i];
 				switch (feature.type) {
 					case WorldCreatorConstants.FEATURE_HOLE_SEA:
 						this.generateDistrictAround(seed, result, feature, SectorConstants.SECTOR_TYPE_RESIDENTIAL, 3, bottomLevel, 20);
@@ -210,7 +199,7 @@ define([
 				var rseed = seed % (1000 - i * 99) + 7 + (level + 13) * 101;
 				var candidate = WorldCreatorRandom.randomSectorPositionWithCheck(
 					rseed, "passage down pos " + level, level, maxDiff, averagePos, minDiff,
-					(pos) => WorldSkeletonGenerator.isValidPassageDownPos(seed, pos, features, passageUp, campPos1, campPos2)
+					(pos) => WorldGenerator.isValidPassageDownPos(seed, pos, features, passageUp, campPos1, campPos2)
 				);
 				let score = PositionConstants.getDistanceTo(candidate, averagePos);
 				candidates.push({ result: candidate, score: score });
@@ -330,90 +319,8 @@ define([
 			
 			return { isValid: true };
 		},
-		
-		getPassageUpType: function (seed, worldVO, level, passageTypes) {
-			if (level == worldVO.topLevel) return null;
-			return passageTypes[level + 1].down;
-		},
-		
-		getPassageDownType: function (seed, worldVO, level) {
-			if (level == worldVO.bottomLevel) return null;
-
-			let s1 = seed / 2 + level * 301;
-
-			let isPlayerGoingDown = level <= 13;
-			let otherLevel = level - 1;
-			let startLevel = isPlayerGoingDown ? level : otherLevel;
-			let endLevel = isPlayerGoingDown ? otherLevel : level;
-			
-			let campOrdinal = WorldCreatorHelper.getCampOrdinal(seed, startLevel);
-			let isCampable = WorldCreatorHelper.isCampableLevel(seed, startLevel);
-
-			// TODO get rid of game globals here
-			let unlockElevatorOrdinal = GameGlobals.upgradeEffectsHelper.getMinimumCampOrdinalForUpgrade("unlock_building_passage_elevator");
-			let unlockHoleOrdinal = GameGlobals.upgradeEffectsHelper.getMinimumCampOrdinalForUpgrade("unlock_building_passage_hole");
-
-			let guaranteedReadyPassageLevel = this.getGuaranteedReadyPassageLevel(seed, worldVO);
-
-			if (level === 13) {
-				return MovementConstants.PASSAGE_TYPE_STAIRWELL;
-			} else if (level === 14) {
-				return MovementConstants.PASSAGE_TYPE_HOLE;
-			} else if (isCampable && campOrdinal == unlockElevatorOrdinal) {
-				return MovementConstants.PASSAGE_TYPE_ELEVATOR;
-			} else if (isCampable && campOrdinal == unlockHoleOrdinal) {
-				return MovementConstants.PASSAGE_TYPE_HOLE;
-			} else if (level == guaranteedReadyPassageLevel) {
-				return MovementConstants.PASSAGE_TYPE_PREBUILT;
-			} else {
-				let availablePassageTypes = this.getAvailablePassageTypes(seed, startLevel, endLevel, unlockElevatorOrdinal, unlockHoleOrdinal);
-				let passageTypeIndex = WorldCreatorRandom.randomInt(s1, 0, availablePassageTypes.length);
-				let passageType = availablePassageTypes[passageTypeIndex];
-				return passageType;
-			}
-		},
-
-		getAvailablePassageTypes: function (seed, startLevel, endLevel, unlockElevatorOrdinal, unlockHoleOrdinal) {
-			let campOrdinal = WorldCreatorHelper.getCampOrdinal(seed, startLevel);
-			let isCampable = WorldCreatorHelper.isCampableLevel(seed, startLevel);
-
-			let result = [ MovementConstants.PASSAGE_TYPE_STAIRWELL ];
-
-			if (campOrdinal >= unlockElevatorOrdinal) {
-				result.push(MovementConstants.PASSAGE_TYPE_ELEVATOR);
-			}
-			
-			if (campOrdinal >= unlockHoleOrdinal) {
-				result.push(MovementConstants.PASSAGE_TYPE_HOLE);
-			}
-
-			let topLevel = WorldCreatorHelper.getHighestLevel(seed);
-			let isKeyCamp = campOrdinal == 1 || campOrdinal == WorldConstants.CAMPS_BEFORE_GROUND || campOrdinal == WorldConstants.CAMPS_TOTAL;
-			let isSurface = endLevel == topLevel;
-			if (!isKeyCamp && !isSurface && !isCampable) {
-				result.push(MovementConstants.PASSAGE_TYPE_PREBUILT);
-			}
-			
-			return result;
-		},
-
-		getGuaranteedReadyPassageLevel: function (seed, worldVO) {
-			let camplessLevels = WorldCreatorHelper.getCamplessLevelOrdinals(seed);
-			let validCamplessLevels = [];
-			for (let i = 0; i < camplessLevels.length; i++) {
-				let level = camplessLevels[i];
-				if (level >= worldVO.topLevel - 2) continue;
-				if (level == 15) continue;
-				if (level == 14) continue;
-				if (level == 11) continue;
-				validCamplessLevels.push(level);
-			}
-
-			let levelIndex = WorldCreatorRandom.randomInt(seed, 0, validCamplessLevels.length);
-			return validCamplessLevels[levelIndex];
-		},
 
 	};
 	
-	return WorldSkeletonGenerator;
+	return WorldGenerator;
 });

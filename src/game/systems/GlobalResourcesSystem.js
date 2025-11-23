@@ -191,7 +191,7 @@ define([
 			let result = [];
 			
 			let level = campNode.position.level;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(level);
 			let hasAccessToTradeNetwork = GameGlobals.resourcesHelper.hasAccessToTradeNetwork(campNode.entity);
 			
 			let builtProjects = GameGlobals.levelHelper.getBuiltProjects();
@@ -201,9 +201,9 @@ define([
 				if (project.improvement.name != improvementNames.luxuryOutpost) continue;
 				
 				let projectLevel = project.position.level;
-				let projectCampOrdinal = GameGlobals.worldState.getCampOrdinal(projectLevel);
+				let projectCampOrdinal = GameGlobals.gameState.getCampOrdinal(projectLevel);
 				if (hasAccessToTradeNetwork || projectCampOrdinal == campOrdinal) {
-					let levelsForCamp = GameGlobals.worldState.getLevelsForCamp(projectCampOrdinal);
+					let levelsForCamp = GameGlobals.gameState.getLevelsForCamp(projectCampOrdinal);
 					for (let i = 0; i < levelsForCamp.length; i++) {
 						let campLevel = levelsForCamp[i];
 						let resource = GameGlobals.levelHelper.getLuxuryResourceOnLevel(campLevel);

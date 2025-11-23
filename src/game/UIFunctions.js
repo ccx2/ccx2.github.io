@@ -94,7 +94,7 @@ define(['ash',
 				});
 				$("#btn-restart").click(function (e) {
 					GlobalSignals.triggerSoundSignal.dispatch(UIConstants.soundTriggerIDs.buttonClicked);
-					uiFunctions.onRestartButton(false);
+					uiFunctions.onRestartButton();
 				});
 				$("#btn-more").click(function (e) {
 					GlobalSignals.triggerSoundSignal.dispatch(UIConstants.soundTriggerIDs.buttonClicked);
@@ -607,6 +607,7 @@ define(['ash',
 			},
 
 			startGame: function () {
+				log.i("Starting game..");
 				var startTab = this.elementIDs.tabs.out;
 				var playerPos = GameGlobals.playerActionFunctions.playerPositionNodes.head.position;
 				if (playerPos.inCamp) startTab = this.elementIDs.tabs.in;
@@ -630,10 +631,9 @@ define(['ash',
 
 			showGame: function () {
 				this.hideGameCounter = this.hideGameCounter || 1;
-				log.i("[ui] show game " + this.hideGameCounter);
 				this.hideGameCounter--;
 				if (this.hideGameCounter > 0) return;
-				log.i("[ui] show game true");
+				log.i("[ui] show game ");
 				this.setGameOverlay(false, false);
 				this.setGameElementsVisibility(true);
 				this.updateButtonCooldowns();
@@ -647,7 +647,7 @@ define(['ash',
 			hideGame: function (showLoading, showThinking) {
 				this.hideGameCounter = this.hideGameCounter || 0;
 				this.hideGameCounter++;
-				log.i("[ui] hide game (showLoading: " + showLoading + ", showThinking: " + showThinking + ", counter: " + this.hideGameCounter + ")");
+				log.i("[ui] hide game (showLoading: " + showLoading + ", showThinking: " + showThinking + ")");
 				showThinking = showThinking && !showLoading;
 				this.setGameOverlay(showLoading, showThinking);
 				this.setGameElementsVisibility(showThinking);
@@ -1098,15 +1098,12 @@ define(['ash',
 				}
 			},
 			
-			onRestartButton: function (showGame) {
-				let sys = this;
+			onRestartButton: function () {
+				var sys = this;
 				this.showConfirmation(
 					"Do you want to restart the game? Your progress will be lost.",
 					function () {
 						sys.restart();
-
-						// show game because it's been hidden by an exception
-						if (showGame) GameGlobals.uiFunctions.showGame();
 					},
 					true
 				);
@@ -1276,28 +1273,10 @@ define(['ash',
 				return (($element).is(":visible"));
 			},
 
-			shouldIgnoreClick: function (e) {
-				if (e && e.target) {
-					// clicking on callouts that are part of clickable elements shouldn't trigger those elements
-					if ($(e.target).hasClass("info-callout-content")) return true;
-				}
-				
-				return false;
-			},
-
 			setText: function (selector, key, options) {
 				if (!selector) {
-					log.w("setText: invalid selector for automatic text update");
+					log.w("invalid selector for automatic text update");
 					return;
-				}
-
-				if (typeof selector === "object") {
-					let id = $(selector).attr("id");
-					if (!id) {
-						log.w("setText: invalid element for automatic text update (needs id)")
-						return;
-					}
-					selector = "#" + id;
 				}
 
 				this.texts[selector] = { key: key, options: options };
@@ -1307,7 +1286,7 @@ define(['ash',
 			updateTexts: function () {
 				for (let selector in this.texts) {
 					let saved = this.texts[selector];
-					let $elem = $(selector);
+					let $elem = typeof selector === "string" ? $(selector) : selector;
 					this.updateText($elem, Text.t(saved.key, saved.options));
 				}
 			},
@@ -1550,14 +1529,14 @@ define(['ash',
 					$(this).attr("data-long-tap-timeout", 0);
 				};
 				$element.on('mousedown', function (e) {
-					let target = e.target;
-					let $target = $(this);
+					var target = e.target;
+					var $target = $(this);
 					cancelLongTap()
-					let timer = setTimeout(function () {
+					var timer = setTimeout(function () {
 						cancelLongTap()
 						var interval = setInterval(function () {
 							if (GameGlobals.gameState.uiStatus.mouseDown && GameGlobals.gameState.uiStatus.mouseDownElement == target) {
-								callback.apply($target, [ e ]);
+								callback.apply($target, e);
 							} else {
 								cancelLongTap();
 							}
@@ -1733,6 +1712,7 @@ define(['ash',
 					callbackOK();
 				};
 				let cancelCallback = function () {
+					uiFunctions.popupManager.closePopup("common-popup");
 					if (callbackNo) callbackNo();
 				};
 				let options = {

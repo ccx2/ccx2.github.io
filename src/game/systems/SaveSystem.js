@@ -183,9 +183,6 @@ define([
 			let save = {};
 			save.entitiesObject = entitiesObject;
 			save.gameState = GameGlobals.gameState;
-			save.worldState = {};
-			Object.assign(save.worldState, GameGlobals.worldState);
-			save.worldState.worldTemplateVO = GameGlobals.worldState.worldTemplateVO.getCustomSaveObject();
 			save.timeStamp = new Date();
 			save.version = version;
 

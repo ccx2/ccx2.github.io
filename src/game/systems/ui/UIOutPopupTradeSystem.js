@@ -251,13 +251,11 @@ define([
 			};
 
 			var onLiClicked = function (e) {
-				if (GameGlobals.uiFunctions.shouldIgnoreClick(e)) return;
 				GlobalSignals.triggerSoundSignal.dispatch(UIConstants.soundTriggerIDs.buttonClicked);
 				moveItem($(this), "click");
 			};
 
 			var onLiLongTap = function (e) {
-				if (GameGlobals.uiFunctions.shouldIgnoreClick(e)) return;
 				moveItem($(this), "longtap");
 			};
 

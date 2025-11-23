@@ -1,79 +1,53 @@
 define(['ash', 'utils/VOCache', 'worldcreator/WorldCreatorConstants', 'worldcreator/WorldCreatorLogger', 'game/constants/PositionConstants', 'game/vos/PositionVO'],
 function (Ash, VOCache, WorldCreatorConstants, WorldCreatorLogger, PositionConstants, PositionVO) {
 
-	let LevelVO = Ash.Class.extend({
+	var LevelVO = Ash.Class.extend({
 	
-		constructor: function (level) {
+		constructor: function (level, levelOrdinal, campOrdinal, isCampable, isHard, notCampableReason, habitability, raidDangerFactor, numSectors) {
 			this.level = level;
-			this.version = null;
-			this.levelOrdinal = 1;
-			this.campOrdinal = 1;
-
-			this.additionalCampPositions = [];
-			this.campPosition = null; // PositionVO
-			this.gangs = []; // list of GangVO
-			this.habitability = 1;
-			this.isCampable = false;
-			this.isHard = false;
-			this.levelCenterPosition = null; // PositionVO
-			this.luxuryResources = []; // list of string
-			this.maxSectors = 1;
-			this.maxX = 0;
-			this.maxY = 0;
-			this.minX = 0;
-			this.minY = 0;
-			this.notCampableReason = null;
-			this.numInvestigateSectors = 0;
-			this.numSectors = 0;
-			this.numSectorsByStage = {}; // e/l -> int
-			this.passageDownPosition = null;
-			this.passageDownType = null;
-			this.passagePositions = [];
-			this.passageUpPosition = null;
-			this.passageUpType = null;
-			this.predefinedExplorers = []; // list of id
-			this.raidDangerFactor = 1;
-			this.seaPadding = 0;
-			this.stageCenterPositions = {}; // e/l -> list of PositionVO
-			this.workshopPositions = [];
-			this.workshopResource = null;
-
-			this.sectors = [];
+			this.levelOrdinal = levelOrdinal;
+			this.campOrdinal = campOrdinal;
+			this.isCampable = isCampable;
+			this.isHard = isHard;
+			this.notCampableReason = notCampableReason;
+			this.habitability = habitability;
+			this.raidDangerFactor = raidDangerFactor;
+			this.numSectors = numSectors;
+			this.maxSectors = numSectors + WorldCreatorConstants.getMaxSectorOverflow(levelOrdinal);
+			this.numSectorsByStage = {};
 			
-			// caches for data used during generation
+			this.campPosition = null;
+			this.additionalCampPositions = [];
+			this.passageUpPosition = null;
+			this.passageDownPosition = null;
+			this.stageCenterPositions = {};
+			this.zones = [];
+			
+			this.sectors = [];
+			this.sectorsByStage = {};
+			this.sectorsByPos = [];
+			this.minX = 0;
+			this.maxX = 0;
+			this.minY = 0;
+			this.maxY = 0;
+			this.invalidPositions = [];
+			
+			this.pendingConnectionPointsByStage = {};
+			
+			this.localeSectors = [];
+			this.numLocales = 0;
+			this.gangs = [];
+			
 			this.neighboursCacheContext = "LevelVO-" + this.level;
 			VOCache.create(this.neighboursCacheContext, 500);
-			
-			this.resetCaches();
-		},
-
-		resetPaths: function () {
-			VOCache.clear(this.neighboursCacheContext);
-		},
-		// called at the end of a world creation call
-		resetInternalData: function () {
-			this.localeSectors = [];
-			this.paths = [];
-			
-			for (let i = 0; i < this.sectors.length; i++) {
-				let sectorVO = this.sectors[i];
-				sectorVO.resetInternalData();
-			}
 		},
 		
-		resetCaches: function () {
+		clear: function () {
+			VOCache.delete(this.neighboursCacheContext);
+		},
+		
+		resetPaths: function () {
 			VOCache.clear(this.neighboursCacheContext);
-
-			this.invalidPositions = [];
-			this.localeSectors = [];
-			this.pendingConnectionPointsByStage = [];
-			this.sectorsByPos = [];
-			this.sectorsByStage = [];
-
-			for (let i = 0; i < this.sectors.length; i++) {
-				let sectorVO = this.sectors[i];
-				sectorVO.resetCaches();
-			}
 		},
 		
 		addSector: function (sectorVO) {
@@ -117,7 +91,6 @@ function (Ash, VOCache, WorldCreatorConstants, WorldCreatorLogger, PositionConst
 					}
 				}
 			}
-			
 			return false;
 		},
 		
@@ -126,17 +99,9 @@ function (Ash, VOCache, WorldCreatorConstants, WorldCreatorLogger, PositionConst
 		},
 		
 		getSector: function (sectorX, sectorY) {
-			if (this.sectorsByPos) {
-				var colList = this.sectorsByPos[sectorX];
-				if (!colList) return null;
-				return this.sectorsByPos[sectorX][sectorY];
-			} else {
-				for (let i = 0; i < this.sectors.length; i++) {
-					let sectorVO = this.sectors[i];
-					if (sectorVO.position.sectorX === sectorX && sectorVO.position.sectorY == sectorY) return sectorVO;
-				}
-				return null;
-			}
+			var colList = this.sectorsByPos[sectorX];
+			if (!colList) return null;
+			return this.sectorsByPos[sectorX][sectorY];
 		},
 		
 		getSectorByPos: function (pos) {
@@ -218,16 +183,6 @@ function (Ash, VOCache, WorldCreatorConstants, WorldCreatorLogger, PositionConst
 			}
 			return result;
 		},
-
-		getExcursionStartPosition: function () {
-			if (this.isCampable) {
-				return this.campPosition;
-			}
-			if (this.level < 13) {
-				return this.passageUpPosition;
-			}
-			return this.passageDownPosition;
-		},
 		
 		addPendingConnectionPoint: function (point) {
 			var sector = this.getSector(point.position.sectorX, point.position.sectorY);
@@ -276,19 +231,11 @@ function (Ash, VOCache, WorldCreatorConstants, WorldCreatorLogger, PositionConst
 		},
 		
 		isPassageUpPosition: function (pos) {
-			return this.passageUpPosition ? this.passageUpPosition.equals(pos) : false;
-		},
-
-		getPassageUpType: function (pos) {
-			return this.isPassageUpPosition(pos) ? this.passageUpType : null;
+			return this.passageUpPosition && this.passageUpPosition.equals(pos);
 		},
 		
 		isPassageDownPosition: function (pos) {
-			return this.passageDownPosition && this.passageDownPosition.equals(pos) ? true : false;
-		},
-
-		getPassageDownType: function (pos) {
-			return this.isPassageDownPosition(pos) ? this.passageDownType : null;
+			return this.passageDownPosition && this.passageDownPosition.equals(pos);
 		},
 		
 		getEntrancePassagePosition: function () {
@@ -316,6 +263,10 @@ function (Ash, VOCache, WorldCreatorConstants, WorldCreatorLogger, PositionConst
 			if (position.x < this.minX) return false;
 			if (position.x > this.maxX) return false;
 			return true;
+		},
+		
+		addGang: function (gangVO) {
+			this.gangs.push(gangVO);
 		},
 		
 		

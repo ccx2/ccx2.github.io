@@ -377,7 +377,7 @@ define(['ash',
 		startDialogue: function (id, explorerVO, characterVO, textParams) {
 			let dialogueVO = DialogueConstants.getDialogue(id);
 			
-			if (!dialogueVO) {
+			if (!dialogueVO || !dialogueVO.dialogueID) {
 				log.w("not able to start dialogue - no such dialogue found: " + id);
 				return;
 			}
@@ -423,11 +423,9 @@ define(['ash',
 		getPositionVO: function (sectorPos) {
 			if (!sectorPos) return null;
 			if (!sectorPos.split) return null;
-			let parts = sectorPos.split(".");
-			if (parts.length < 3) return null;
-			let l = parseInt(parts[0]);
-			let sX = parseInt(parts[1]);
-			let sY = parseInt(parts[2]);
+			var l = parseInt(sectorPos.split(".")[0]);
+			var sX = parseInt(sectorPos.split(".")[1]);
+			var sY = parseInt(sectorPos.split(".")[2]);
 			return new PositionVO(l, sX, sY);
 		},
 
@@ -507,7 +505,7 @@ define(['ash',
 					break;
 			}
 			
-			GameGlobals.playerHelper.moveTo(newPos.level, newPos.sectorX, newPos.sectorY, newPos.inCamp, action, false);
+			GameGlobals.playerHelper.moveTo(newPos.level, newPos.sectorX, newPos.sectorY, newPos.inCamp, action);
 		},
 
 		moveToCamp: function (param) {
@@ -515,7 +513,7 @@ define(['ash',
 			let campSector = null;
 			for (var node = this.campNodes.head; node; node = node.next) {
 				let nodePosition = node.position;
-				let foundCampOrdinal = GameGlobals.worldState.getCampOrdinal(nodePosition.level);
+				let foundCampOrdinal = GameGlobals.gameState.getCampOrdinal(nodePosition.level);
 				if (foundCampOrdinal == campOrdinal) {
 					campSector = node.entity;
 					break;
@@ -927,7 +925,7 @@ define(['ash',
 			if (localeType === localeTypes.tradingpartner) {
 				let playerPos = this.playerPositionNodes.head.position;
 				let level = playerPos.level;
-				let campOrdinal = GameGlobals.worldState.getCampOrdinal(level);
+				let campOrdinal = GameGlobals.gameState.getCampOrdinal(level);
 				if (GameGlobals.gameState.foundTradingPartners.indexOf(campOrdinal) < 0) {
 					let partner = TradeConstants.getTradePartner(campOrdinal);
 					if (partner) {
@@ -982,6 +980,13 @@ define(['ash',
 						{ type: "dialogue", dialogueID: "locale_story_greenhouse" },
 						{ type: "custom", f: successCallback },
 						{ type: "log", textKey: "story.stories.greenhouse_greenhouse_found_message" }
+					], localeName);
+					return;
+				} else {
+					this.startSequence([
+						{ type: "dialogue", dialogueID: "locale_generic_greenhouse_intro_01" },
+						{ type: "custom", f: successCallback },
+						{ type: "log", textKey: "Scouted a Greenhouse." }
 					], localeName);
 					return;
 				}
@@ -1209,8 +1214,8 @@ define(['ash',
 			let resourceName = workshopComponent.resource;
 			
 			let currentLevel = playerPosition.level;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(currentLevel);
-			let campLevel = GameGlobals.worldState.getLevelForCamp(campOrdinal);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(currentLevel);
+			let campLevel = GameGlobals.gameState.getLevelForCamp(campOrdinal);
 			
 			let action = "clear_workshop";
 			let workshopName = TextConstants.getWorkshopName(workshopComponent.resource);
@@ -1337,9 +1342,9 @@ define(['ash',
 
 			GameGlobals.uiFunctions.setGameElementsVisibility(false);
 			GameGlobals.uiFunctions.showInfoPopup(
-				Text.t("game.actions.nap_name"),
-				Text.t("ui.actions.nap_start_message"),
-				Text.t("ui.common.continue_button_label"),
+				"Rest",
+				"Found a bench to sleep on and tried to regain some energy.",
+				"Continue",
 				null,
 				() => {
 					GameGlobals.uiFunctions.hideGame(false);
@@ -1350,12 +1355,12 @@ define(['ash',
 							if (excursionComponent) excursionComponent.numNaps++;
 							GameGlobals.gameState.increaseGameStatSimple("numTimesRestedOutside");
 							sys.playerStatsNodes.head.vision.value = Math.min(sys.playerStatsNodes.head.vision.value, PlayerStatConstants.VISION_BASE);
-							let logMsgFail = Text.t("ui.actions.nap_fail_message");
+							let logMsgFail = "Tried to rest but got attacked.";
 							let messages = {
 								id: LogConstants.MSG_ID_NAP,
 								msgSuccess: hasSleepingBag ? 
-									Text.t("ui.actions.nap_success_message_equipment") :
-									Text.t("ui.actions.nap_success_message_default"),
+									"Found a bench and rolled up in the sleeping bag, trying to get some rest." :
+									"Found a bench to sleep on. Barely feel rested.",
 								msgFlee: logMsgFail,
 								msgDefeat: logMsgFail,
 								addToLog: true,
@@ -1952,7 +1957,7 @@ define(['ash',
 			var sector = this.playerLocationNodes.head.entity;
 			var level = GameGlobals.levelHelper.getLevelEntityForSector(sector);
 			var position = sector.get(PositionComponent).getPosition();
-			var campOrdinal = GameGlobals.worldState.getCampOrdinal(position.level);
+			var campOrdinal = GameGlobals.gameState.getCampOrdinal(position.level);
 			if (GameGlobals.gameFlowLogger.isEnabled) log.i("Build camp " + position + " ordinal " + campOrdinal);
 			var campComponent = new CampComponent(position.toString());
 			campComponent.foundedTimeStamp = new Date().getTime();
@@ -1985,48 +1990,50 @@ define(['ash',
 		},
 
 		buildPassageUpStairs: function (sectorPos) {
-			this.buildPassage(sectorPos, true, MovementConstants.PASSAGE_TYPE_STAIRWELL, "build_out_passage_up_stairs");
+			this.buildPassage(sectorPos, true, MovementConstants.PASSAGE_TYPE_STAIRWELL, "build_out_passage_up_stairs", "build_out_passage_down_stairs");
 		},
 
 		buildPassageDownStairs: function (sectorPos) {
-			this.buildPassage(sectorPos, false, MovementConstants.PASSAGE_TYPE_STAIRWELL, "build_out_passage_down_stairs");
+			this.buildPassage(sectorPos, false, MovementConstants.PASSAGE_TYPE_STAIRWELL, "build_out_passage_down_stairs", "build_out_passage_up_stairs");
 			GameGlobals.gameState.setStoryFlag(StoryConstants.ESCAPE_PASSAGE_DOWN_BUILT, true);
 		},
 
 		buildPassageUpElevator: function (sectorPos) {
-			this.buildPassage(sectorPos, true, MovementConstants.PASSAGE_TYPE_ELEVATOR, "build_out_passage_up_elevator");
+			this.buildPassage(sectorPos, true, MovementConstants.PASSAGE_TYPE_ELEVATOR, "build_out_passage_up_elevator", "build_out_passage_down_elevator");
 		},
 
 		buildPassageDownElevator: function (sectorPos) {
-			this.buildPassage(sectorPos, false, MovementConstants.PASSAGE_TYPE_ELEVATOR, "build_out_passage_down_elevator");
+			this.buildPassage(sectorPos, false, MovementConstants.PASSAGE_TYPE_ELEVATOR, "build_out_passage_down_elevator", "build_out_passage_up_elevator");
 		},
 
 		buildPassageUpHole: function (sectorPos) {
-			this.buildPassage(sectorPos, true, MovementConstants.PASSAGE_TYPE_HOLE, "build_out_passage_up_hole");
+			this.buildPassage(sectorPos, true, MovementConstants.PASSAGE_TYPE_HOLE, "build_out_passage_up_hole", "build_out_passage_down_hole");
 		},
 
 		buildPassageDownHole: function (sectorPos) {
-			this.buildPassage(sectorPos, false, MovementConstants.PASSAGE_TYPE_HOLE, "build_out_passage_down_hole");
+			this.buildPassage(sectorPos, false, MovementConstants.PASSAGE_TYPE_HOLE, "build_out_passage_down_hole", "build_out_passage_up_hole");
 		},
 
-		buildPassage: function (sectorPos, up, passageType, action) {
+		buildPassage: function (sectorPos, up, passageType, action, neighbourAction) {
 			var position = this.getPositionVO(sectorPos);
-			var levelOrdinal = GameGlobals.worldState.getLevelOrdinal(position.level);
+			var levelOrdinal = GameGlobals.gameState.getLevelOrdinal(position.level);
 			action = action + "_" + levelOrdinal;
 			var sector = this.getActionSector(action, sectorPos);
+			neighbourAction = neighbourAction + "_" + levelOrdinal;
 
 			var sectorPosVO = StringUtils.getPosition(sectorPos);
+			var neighbour = GameGlobals.levelHelper.getSectorByPosition(up ? position.level + 1 : position.level - 1, position.sectorX, position.sectorY);
 
-			// NOTE: ImprovementsSystem will build corresponding passage in sector above / below, either now if level exists or later when it's generated
-
-			if (sector) {
+			if (sector && neighbour) {
 				var direction = up ? PositionConstants.DIRECTION_UP : PositionConstants.DIRECTION_DOWN;
 				var msg = TextConstants.getPassageRepairedMessage(passageType, direction, sectorPosVO, GameGlobals.gameState.numCamps);
 				this.buildImprovement(action, GameGlobals.playerActionsHelper.getImprovementNameForAction(action), sector);
+				this.buildImprovement(neighbourAction, GameGlobals.playerActionsHelper.getImprovementNameForAction(neighbourAction), neighbour, true);
 				GameGlobals.playerHelper.addLogMessage(LogConstants.MSG_ID_BUILT_PASSAGE, msg, { position: position, visibility: LogConstants.MSG_VISIBILITY_GLOBAL });
 			} else {
 				log.w("Couldn't find sectors for building passage.");
 				log.i(sector);
+				log.i(neighbour);
 				log.i(sectorPos);
 			}
 		},
@@ -2036,8 +2043,8 @@ define(['ash',
 			let position = this.getPositionVO(sectorPos);
 			let sector = this.getActionSector(action, sectorPos);
 			let level = position.level;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(level);
-			let campLevel = GameGlobals.worldState.getLevelForCamp(campOrdinal);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(level);
+			let campLevel = GameGlobals.gameState.getLevelForCamp(campOrdinal);
 			
 			// TODO use camp name in message if defined
 
@@ -2613,7 +2620,7 @@ define(['ash',
 			let itemName = ItemConstants.getItemDisplayName(item);
 
 			var foundPosition = item.foundPosition || playerPos;
-			var foundPositionCampOrdinal = GameGlobals.worldState.getCampOrdinal(foundPosition.level);
+			var foundPositionCampOrdinal = GameGlobals.gameState.getCampOrdinal(foundPosition.level);
 			let resultVO = new ResultVO("use_item");
 			
 			let itemConfig = ItemConstants.getItemDefinitionByID(itemId);
@@ -2797,9 +2804,9 @@ define(['ash',
 					}
 					
 					if (revealedSomething) {
-						GameGlobals.playerHelper.addLogMessage(LogConstants.MSG_ID_USE_MAP_PIECE, Text.t("ui.actions.use_consumable_map_message_default"));
+						GameGlobals.playerHelper.addLogMessage(LogConstants.MSG_ID_USE_MAP_PIECE, "Recorded any useful information from the map.");
 					} else {
-						GameGlobals.playerHelper.addLogMessage(LogConstants.MSG_ID_USE_MAP_PIECE, Text.t("ui.actions.use_consumable_map_message_empty"));
+						GameGlobals.playerHelper.addLogMessage(LogConstants.MSG_ID_USE_MAP_PIECE, "Checked the map, but there was nothing interesting there.");
 					}
 					
 					GlobalSignals.mapPieceUsedSignal.dispatch();
@@ -2988,16 +2995,13 @@ define(['ash',
 			GlobalSignals.collectorCollectedSignal.dispatch();
 		},
 
-		// actionName: can be null if improvement is built automatically (for example passage corresponding to a built one)
 		buildImprovement: function (actionName, improvementName, otherSector) {
 			let sector = otherSector ? otherSector : this.playerLocationNodes.head.entity;
 			let improvementsComponent = sector.get(SectorImprovementsComponent);
-
 			if (!improvementsComponent) {
-				log.w("trying to build an improvement but there is no SectorImprovementsComponent", this);
+				log.w("trying to build an improvement but there is no SectorImprovementsComponent " + actionName, this);
 				return;
 			}
-
 			let improvementID = ImprovementConstants.getImprovementID(improvementName);
 			let currentAmount = improvementsComponent.getCount(improvementName);
 
@@ -3006,17 +3010,14 @@ define(['ash',
 				return;
 			}
 
-			log.i("build improvement " + improvementName + " at " + sector.get(PositionComponent).positionId());
-
 			improvementsComponent.add(improvementName);
-			
 			GameGlobals.gameState.increaseGameStatKeyed("numBuildingsBuiltPerId", improvementID);
 
 			let level = improvementsComponent.getLevel(improvementName);
 			let isProject = ImprovementConstants.isProject(improvementName);
 			let isPassage = improvementsComponent.getVO(improvementName).isPassage();
 			
-			if (actionName && !isPassage) {
+			if (!isPassage) {
 				// passages have a dedicated message
 				let msg = ImprovementConstants.getBuiltLogMessageTextVO(improvementID, level);
 				let messagePosition = sector.get(PositionComponent).getPosition();
@@ -3027,7 +3028,7 @@ define(['ash',
 
 			GlobalSignals.improvementBuiltSignal.dispatch();
 			
-			if (actionName)	this.completeAction(actionName);
+			this.completeAction(actionName);
 			
 			this.save();
 		},

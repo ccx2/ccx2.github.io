@@ -240,7 +240,7 @@ define([
 			
 			let improvements = campNode.entity.get(SectorImprovementsComponent);
 			let improvementType = GameGlobals.upgradeEffectsHelper.getImprovementForOccurrence(event);
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(campNode.position.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(campNode.position.level);
 			
 			switch (event) {
 				case OccurrenceConstants.campOccurrenceTypes.accident:
@@ -476,7 +476,7 @@ define([
 			var campTimers = campNode.entity.get(CampEventTimersComponent);
 			var duration = OccurrenceConstants.getDuration(event);
 			var campPos = campNode.entity.get(PositionComponent);
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(campPos.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(campPos.level);
 
 			let logMsg = null;
 			switch (event) {
@@ -569,7 +569,7 @@ define([
 		skipEvent: function (campNode, event) {
 			var campTimers = campNode.entity.get(CampEventTimersComponent);
 			campTimers.onEventSkipped(event);
-			log.i("Skip " + event + " at " + campNode.camp.campName + " (" + campNode.position.level + ") (skip probability: " + this.getEventSkipProbability(campNode, event) + ")"), "camp events";
+			log.i("Skip " + event + " at " + campNode.camp.campName + " (" + campNode.position.level + ") (skip probability: " + this.getEventSkipProbability(campNode, event) + ")");
 			this.scheduleEvent(campNode, event);
 			GlobalSignals.saveGameSignal.dispatch(GameConstants.SAVE_SLOT_DEFAULT, false);
 		},
@@ -898,7 +898,6 @@ define([
 				
 				case OccurrenceConstants.campOccurrenceTypes.recruit:
 					let explorerStats = GameGlobals.playerHelper.getExplorerStats();
-					if (explorerStats.minExplorersByType > 5) return 0.9;
 					if (explorerStats.minExplorersByType > 1) return 0.5;
 					if (explorerStats.minExplorersByType > 0) return 0.25;
 					break;

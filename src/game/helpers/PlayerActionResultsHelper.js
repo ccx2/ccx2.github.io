@@ -283,7 +283,7 @@ define([
 			let isCompletion = investigatePercentAfter >= 100;
 			
 			let playerPos = this.playerLocationNodes.head.position;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(playerPos.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(playerPos.level);
 			
 			log.i("getInvestigateRewards | isCompletion: " + isCompletion, this);
 			
@@ -338,7 +338,7 @@ define([
 			let localeCategory = localeVO.getCategory();
 			let sector = this.playerLocationNodes.head.entity;
 			let playerPos = this.playerLocationNodes.head.position;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(playerPos.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(playerPos.level);
 
 			let sectorStatus = this.playerLocationNodes.head.entity.get(SectorStatusComponent);
 			let sectorFeatures = this.playerLocationNodes.head.entity.get(SectorFeaturesComponent);
@@ -496,9 +496,7 @@ define([
 			
 			let finalInjuryProbability = resultVO.lostPerks.length > 0 ? injuryProbability / 2 : injuryProbability;
 			resultVO.gainedPerks = this.getResultInjuries(finalInjuryProbability, sourceAction, enemyVO);
-
-			let explorerInjuryProbability = (injuryProbability + loseExplorerProbability) / 2;
-			resultVO.gainedExplorerInjuries = this.getResultInjuriesExplorer(injuryProbability, sourceAction, enemyVO, resultVO.lostExplorers);
+			resultVO.gainedExplorerInjuries = this.getResultInjuriesExplorer(finalInjuryProbability, sourceAction, enemyVO, resultVO.lostExplorers);
 
 			return resultVO;
 		},
@@ -754,7 +752,7 @@ define([
 			
 			if (rewards.foundStashVO) {
 				let sectorStatus = sourceSector.get(SectorStatusComponent);
-				sectorStatus.stashesFound.push(rewards.foundStashVO.getStashID());
+				sectorStatus.stashesFound.push(rewards.foundStashVO.stashIndex);
 			}
 			
 			let defaultRewardCampNode = this.getDefaultRewardCampNode();
@@ -1216,19 +1214,19 @@ define([
 				let perkVO = resultVO.gainedPerks[i];
 
 				if (perkVO.type == PerkConstants.perkTypes.injury) {
-					div += "<p class='warning'>" + Text.t("ui.exploration.action_result_perk_injured_message") + "</p>";
+					div += "<p class='warning'>You got injured.</p>";
 				}
 
 				if (perkVO.id == PerkConstants.perkIds.cursed) {
-					div += "<p class='warning'>" + Text.t("ui.exploration.action_result_perk_cursed_message") + "</p>";
+					div += "<p class='warning'>You got cursed.</p>";
 				}
 
 				if (perkVO.id == PerkConstants.perkIds.stressed) {
-					div += "<p class='warning'>" + Text.t("ui.exploration.action_result_perk_stressed_message") + "</p>";
+					div += "<p class='warning'>You got stressed.</p>";
 				}
 
 				if (perkVO.id == PerkConstants.perkIds.accomplished) {
-					div += "<p>" + Text.t("ui.exploration.action_result_perk_accomplished_message") + "</p>";
+					div += "<p>You feel accomplished.</p>";
 				}
 			}
 
@@ -1361,12 +1359,8 @@ define([
 	
 			if (resultVO.selectedItems) {
 				for (let i = 0; i < resultVO.selectedItems.length; i++) {
-					let item = resultVO.selectedItems[i];
-					if (!item) {
-						log.e("null item in resultVO.selectedItems (action:" + resultVO.action + ")");
-						continue;
-					}
-					let isInteresting = 
+					var item = resultVO.selectedItems[i];
+					var isInteresting = 
 						itemsComponent.getCountById(item.id, true) === 1 &&
 						!(item.equippable && !item.equipped) &&
 						item.type !== ItemConstants.itemTypes.artefact &&
@@ -1557,7 +1551,7 @@ define([
 			let efficiency = this.getCurrentScavengeEfficiency();
 			
 			var playerPos = this.playerLocationNodes.head.position;
-			var campOrdinal = GameGlobals.worldState.getCampOrdinal(playerPos.level);
+			var campOrdinal = GameGlobals.gameState.getCampOrdinal(playerPos.level);
 			var step = GameGlobals.levelHelper.getCampStep(playerPos);
 			
 			let hasDecentEfficiency = efficiency > 0.25;
@@ -1624,7 +1618,7 @@ define([
 			let result = [];
 			
 			let playerPos = this.playerLocationNodes.head.position;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(playerPos.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(playerPos.level);
 			if (campOrdinal <= ExplorerConstants.FIRST_EXPLORER_CAMP_ORDINAL) return result;
 
 			let fallback = this.getFallbackExplorer();
@@ -1910,7 +1904,7 @@ define([
 		
 		getNecessityIngredient: function (ingredientProbability) {			
 			var playerPos = this.playerLocationNodes.head.position;
-			var campOrdinal = GameGlobals.worldState.getCampOrdinal(playerPos.level);
+			var campOrdinal = GameGlobals.gameState.getCampOrdinal(playerPos.level);
 			var step = GameGlobals.levelHelper.getCampStep(playerPos);
 			var levelComponent = GameGlobals.levelHelper.getLevelEntityForPosition(playerPos.level).get(LevelComponent);
 			var isHardLevel = levelComponent.isHard;
@@ -2003,21 +1997,18 @@ define([
 
 			let stashVO = null;
 			for (let i = 0; i < stashes.length; i++) {
+				if (stashesFound && stashesFound.indexOf(i) >= 0) continue;
 				let possibleStashVO = stashes[i];
-				let stashID = possibleStashVO.getStashID();
-				if (stashesFound && stashesFound.indexOf(stashID) >= 0) continue;
 				if (possibleStashVO.localeType != localeType) continue;
 
 				if (possibleStashVO.stashType == ItemConstants.STASH_TYPE_ITEM) {
 					let itemID = possibleStashVO.itemID;
 					let numOwned = itemsComponent.getCountByBaseId(ItemConstants.getBaseItemID(itemID), true);
-					let maxOwned = 5;
-					let itemVO = ItemConstants.getItemDefinitionByID(itemID);
-					if (itemVO.type == ItemConstants.itemTypes.uniqueEquipment) maxOwned = 1;
-					if (numOwned >= maxOwned) continue;
+					if (numOwned >= 5) continue;
 				}
 				
 				stashVO = possibleStashVO;
+				stashVO.stashIndex = i;
 				break;
 			}
 
@@ -2373,7 +2364,7 @@ define([
 				let allowedTypes = this.getAllowedInjuryTypes(action, enemyVO, sectorFeatures);
 				
 				let injury = PerkConstants.getRandomInjury(allowedTypes);
-				if (injury) result.push(injury.clone());
+				result.push(injury.clone());
 			}
 			
 			return result;
@@ -2474,9 +2465,9 @@ define([
 			if (!localeVO.hasBlueprints) return null;
 			
 			let playerPos = this.playerLocationNodes.head.position;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(playerPos.level);
-			let levelIndex = GameGlobals.worldState.getLevelIndex(playerPos.level);
-			let maxLevelIndex = GameGlobals.worldState.getMaxLevelIndex(playerPos.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(playerPos.level);
+			let levelIndex = GameGlobals.gameState.getLevelIndex(playerPos.level);
+			let maxLevelIndex = GameGlobals.gameState.getMaxLevelIndex(playerPos.level);
 
 			let blueprintType = localeVO.isEarly ? UpgradeConstants.BLUEPRINT_BRACKET_EARLY : UpgradeConstants.BLUEPRINT_BRACKET_LATE;
 			let levelBlueprints = UpgradeConstants.getBlueprintsByCampOrdinal(campOrdinal, blueprintType, levelIndex, maxLevelIndex);
@@ -2615,7 +2606,7 @@ define([
 			// TODO extend to all predefined explorers (now first one only)
 			
 			let playerPos = this.playerLocationNodes.head.position;
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(playerPos.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(playerPos.level);
 			if (campOrdinal < ExplorerConstants.FIRST_EXPLORER_CAMP_ORDINAL) return null;
 			
 			let upgradeID = GameGlobals.upgradeEffectsHelper.getUpgradeToUnlockBuilding(improvementNames.inn);
@@ -2628,7 +2619,7 @@ define([
 			if (nearestCampNode == null) return null;
 			if (nearestCampNode.camp.pendingRecruits.length > 0) return null;
 			
-			let level = GameGlobals.worldState.getLevelForCamp(ExplorerConstants.FIRST_EXPLORER_CAMP_ORDINAL);
+			let level = GameGlobals.gameState.getLevelForCamp(ExplorerConstants.FIRST_EXPLORER_CAMP_ORDINAL);
 			let unscoutedLocales = GameGlobals.levelHelper.getLevelLocales(level, false, LocaleConstants.LOCALE_BRACKET_EARLY, null, false).length;
 			if (unscoutedLocales > 0) return null;
 			
@@ -2642,16 +2633,16 @@ define([
 			let missedBlueprints = [];
 			let playerPos = this.playerLocationNodes.head.position;
 			let upgradesComponent = this.tribeUpgradesNodes.head.upgrades;
-			let levelOrdinal = GameGlobals.worldState.getLevelOrdinal(playerPos.level);
+			let levelOrdinal = GameGlobals.gameState.getLevelOrdinal(playerPos.level);
 
 			for (let i = 1; i <= levelOrdinal; i++) {
-				let level = GameGlobals.worldState.getLevelForOrdinal(i);
+				let level = GameGlobals.gameState.getLevelForOrdinal(i);
 				let allLocales = GameGlobals.levelHelper.getLevelLocales(level, true, null, true).length;
 				let unscoutedLocales = GameGlobals.levelHelper.getLevelLocales(level, false, null, true).length;
 				if (allLocales > 0 && unscoutedLocales === 0) {
-					let c = GameGlobals.worldState.getCampOrdinal(level);
-					let levelIndex = GameGlobals.worldState.getLevelIndex(level);
-					let maxLevelIndex = GameGlobals.worldState.getMaxLevelIndex(level);
+					let c = GameGlobals.gameState.getCampOrdinal(level);
+					let levelIndex = GameGlobals.gameState.getLevelIndex(level);
+					let maxLevelIndex = GameGlobals.gameState.getMaxLevelIndex(level);
 					let levelBlueprints = UpgradeConstants.getBlueprintsByCampOrdinal(c, null, levelIndex, maxLevelIndex);
 					for (let j = 0; j < levelBlueprints.length; j++) {
 						var blueprintID = levelBlueprints[j];

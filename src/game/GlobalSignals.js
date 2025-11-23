@@ -96,13 +96,11 @@ define(['ash',], function (Ash) {
 		campEventEndedSignal: new Ash.Signals.Signal(),
 		levelTypeRevealedSignal: new Ash.Signals.Signal(),
 
-		// game state events
+		// game meta events
 		gameStateLoadedSignal: new Ash.Signals.Signal(),
 		gameStateReadySignal: new Ash.Signals.Signal(),
-		levelStateReadySignal: new Ash.Signals.Signal(),
 		gameStartedSignal: new Ash.Signals.Signal(),
 		gameStateRefreshSignal: new Ash.Signals.Signal(),
-		levelGeneratedSignal: new Ash.Signals.Signal(),
 		saveGameSignal: new Ash.Signals.Signal(),
 		restartGameSignal: new Ash.Signals.Signal(),
 		gameResetSignal: new Ash.Signals.Signal(),
@@ -115,7 +113,6 @@ define(['ash',], function (Ash) {
 		triggerSignal: new Ash.Signals.Signal(),
 		settingsChangedSignal: new Ash.Signals.Signal(),
 		changelogLoadedSignal: new Ash.Signals.Signal(),
-		errorLoggedSignal: new Ash.Signals.Signal(),
 
 		add: function (system, signal, listener, priority) {
 			priority = priority || GlobalSignals.PRIORITY_DEFAULT;

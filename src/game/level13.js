@@ -47,7 +47,7 @@ define([
 	'game/systems/TutorialSystem',
 	'game/systems/LevelStatusSystem',
 	'game/systems/CharacterSystem',
-	'game/systems/ImprovementsSystem',
+	'game/systems/CollectorSystem',
 	'game/systems/FightSystem',
 	'game/systems/PopulationSystem',
 	'game/systems/PerkSystem',
@@ -119,7 +119,7 @@ define([
 	TutorialSystem,
 	LevelStatusSystem,
 	CharacterSystem,
-	ImprovementsSystem,
+	CollectorSystem,
 	FightSystem,
 	PopulationSystem,
 	PerkSystem,
@@ -143,7 +143,7 @@ define([
 	StringUtils,
 	TickProvider
 ) {
-	let Level13 = Ash.Class.extend({
+	var Level13 = Ash.Class.extend({
 
 		engine: null,
 		gameManager: null,
@@ -156,7 +156,7 @@ define([
 			this.tickProvider = new TickProvider(null, function (ex) { game.handleException(ex) });
 			this.gameManager = new GameManager(this.tickProvider, this.engine);
 
-			GameGlobalsInitializer.init(this.engine, this.gameManager);
+			GameGlobalsInitializer.init(this.engine);
 
 			this.setup(plugins);
 		},
@@ -205,10 +205,11 @@ define([
 		},
 
 		setupEngine: function () {
-			log.i("setting up engine (" + GameConstants.getTimeSinceStart() + ")", "start");
 			let game = this;
 			
 			return new Promise((resolve, reject) => {
+				log.i("START " + GameConstants.STARTTimeNow() + "\t setting up engine");
+				
 				ExceptionHandler.exceptionCallback = function (ex) { game.handleException(ex) };
 				GlobalSignals.exceptionCallback = function (ex) { game.handleException(ex) };
 				
@@ -219,7 +220,7 @@ define([
 
 		setupPage: function () {
 			return new Promise((resolve, reject) => {
-				log.i("setting up page (" + GameConstants.getTimeSinceStart() + ")", "start");
+				log.i("START " + GameConstants.STARTTimeNow() + "\t setting up page");
 				this.addUISystems();
 				GameGlobals.uiFunctions.init();
 				GameGlobals.uiFunctions.hideGame();
@@ -229,13 +230,13 @@ define([
 		},
 
 		loadTexts: function () {
-			log.i("loading texts (" + GameConstants.getTimeSinceStart() + ")", "start");
+			log.i("START " + GameConstants.STARTTimeNow() + "\t loading texts");
 			return GameGlobals.textLoader.loadTexts();
 		},
 
 		loadVersion: function () {
 			return new Promise((resolve, reject) => {
-				log.i("loading versions (" + GameConstants.getTimeSinceStart() + ")", "start");
+				log.i("START " + GameConstants.STARTTimeNow() + "\t loading versions");
 				GlobalSignals.changelogLoadedSignal.addOnce(function () {
 					ExceptionHandler.wrapCall(this, function () {
 						resolve();
@@ -274,7 +275,6 @@ define([
 		},
 
 		initializePlugins: function (plugins) {
-			log.i("initializing plugins (" + GameConstants.getTimeSinceStart() + ")", "start");
 			return new Promise((resolve, reject) => {
 				if (!plugins) resolve();
 				let game = this;
@@ -293,7 +293,7 @@ define([
 		},
 
 		addLogicSystems: function () {
-			log.i("initializing logic systems (" + GameConstants.getTimeSinceStart() + ")", "start");
+			log.i("START " + GameConstants.STARTTimeNow() + "\t initializing logic systems");
 
 			this.engine.addSystem(new SaveSystem(), SystemPriorities.preUpdate);
 			this.engine.addSystem(new LevelStatusSystem(), SystemPriorities.preUpdate);
@@ -304,7 +304,7 @@ define([
 			this.engine.addSystem(new StaminaSystem(), SystemPriorities.update);
 			this.engine.addSystem(new BagSystem(), SystemPriorities.update);
 			this.engine.addSystem(new CharacterSystem(), SystemPriorities.update);
-			this.engine.addSystem(new ImprovementsSystem(), SystemPriorities.update);
+			this.engine.addSystem(new CollectorSystem(), SystemPriorities.update);
 			this.engine.addSystem(new DialogueSystem(), SystemPriorities.update);
 			this.engine.addSystem(new FightSystem(true), SystemPriorities.update);
 			this.engine.addSystem(new PopulationSystem(), SystemPriorities.update);
@@ -337,7 +337,7 @@ define([
 		},
 
 		addUISystems: function () {
-			log.i("initializing ui systems (" + GameConstants.getTimeSinceStart() + ")", "start");
+			log.i("START " + GameConstants.STARTTimeNow() + "\t initializing ui systems");
 
 			this.engine.addSystem(new UIOutAudioSystem(), SystemPriorities.render);
 			this.engine.addSystem(new UIOutTextSystem(), SystemPriorities.render);
@@ -366,6 +366,7 @@ define([
 		},
 
 		start: function () {
+			log.i("START " + GameConstants.STARTTimeNow() + "\t start tick");
 			this.gameManager.startGame();
 		},
 
@@ -400,13 +401,10 @@ define([
 				"reload",
 				"clear data",
 				() => { location.reload(); },
-				() => { 
-					GameGlobals.uiFunctions.onRestartButton(true); 
-				},
+				() => { GameGlobals.uiFunctions.onRestartButton(); },
 				true
 			);
 
-			GameGlobals.gameState.uiStatus.isBusyCounter -= 100;
 			this.numExceptionsInRow = 0;
 			
 			throw ex;

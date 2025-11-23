@@ -13,11 +13,6 @@ define([
 	function Level13App() {
 
 		this.initialise = function (config) {
-			GameConstants.startTime = new Date().getTime();
-			GameConstants.getTimeSinceStart = function () {
-				return new Date().getTime() - this.startTime;
-			}
-
 			let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry/i.test(navigator.userAgent);
 
 			GameConstants.isMobile = isMobileDevice;
@@ -27,12 +22,8 @@ define([
 			GameConstants.isCheatsEnabled = config.isCheatsEnabled;
 			GameConstants.isAutosaveEnabled = config.isAutosaveEnabled;
 			ConsoleLogger.logInfo = config.isDebugOutputEnabled;
-
-			let isOfficialVersion = GameConstants.isOfficialVersion();
-			let errorCount = 0;
-			let errorLimit = 10;
 			
-			if (config.isTrackingEnabled && isOfficialVersion) {
+			if (config.isTrackingEnabled) {
 				try {
 					// init GlitchTip for error tracking
 					Sentry.init({
@@ -40,11 +31,6 @@ define([
 						tracesSampleRate: 0.01,
 						environment: config.isDebugVersion ? "development" : "production",
   						release: "l13-" + config.version,
-						beforeSend: function (event, hint) {
-							errorCount++;
-							if (errorCount > errorLimit) return null;
-							return event;
-						}
 					});
 				} catch (e) {
 					log.w("error tracking not initialized");
@@ -56,7 +42,12 @@ define([
 			TextBuilder.isDebugMode = config.isDebugVersion;
 			TextBuilder.language = LangEnglish;
 
-			let level13 = new Level13(config.plugins);
+			GameConstants.STARTTimeStart = new Date().getTime();
+			GameConstants.STARTTimeNow = function () {
+				return new Date().getTime() - this.STARTTimeStart;
+			}
+
+			var level13 = new Level13(config.plugins);
 
 			if (GameConstants.isCheatsEnabled) {
 				window.app = level13;

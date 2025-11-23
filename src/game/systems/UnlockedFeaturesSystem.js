@@ -118,7 +118,7 @@ define([
 				}
 			}
 
-			let groundLevel = GameGlobals.worldState.getGroundLevel();
+			let groundLevel = GameGlobals.gameState.getGroundLevel();
 			let position = new PositionVO(groundLevel, 0, 0, false);
 			let groveSector = GameGlobals.levelHelper.findNearestLocaleSector(position, localeTypes.grove);
 			if (groveSector) {

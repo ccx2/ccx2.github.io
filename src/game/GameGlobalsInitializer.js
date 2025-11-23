@@ -4,7 +4,6 @@ define([
 	'game/GameState',
 	'game/GameFlowLogger',
 	'game/MetaState',
-	'game/WorldState',
 	'game/PlayerActionFunctions',
 	'game/UIFunctions',
 	'game/helpers/CampHelper',
@@ -28,7 +27,6 @@ define([
 	'game/helpers/TribeHelper',
 	'game/helpers/UpgradeEffectsHelper',
 	'game/helpers/ButtonHelper',
-	'game/helpers/WorldHelper',
 	'game/helpers/ui/ChangeLogHelper',
 	'game/helpers/ui/UIMapHelper',
 	'game/helpers/ui/UITechTreeHelper',
@@ -38,7 +36,6 @@ define([
 	GameState,
 	GameFlowLogger,
 	MetaState,
-	WorldState,
 	PlayerActionFunctions,
 	UIFunctions,
 	CampHelper,
@@ -62,21 +59,16 @@ define([
 	TribeHelper,
 	UpgradeEffectsHelper,
 	ButtonHelper,
-	WorldHelper,
 	ChangeLogHelper,
 	UIMapHelper,
 	UITechTreeHelper,
 ) {
-	let GameGlobalsInitializer = {
+	var GameGlobalsInitializer = {
 		
-		init: function (engine, gameManager) {
+		init: function (engine) {
 			GameGlobals.engine = engine;
-			GameGlobals.gameManager = gameManager;
-
 			GameGlobals.gameState = new GameState();
 			GameGlobals.metaState = new MetaState();
-			GameGlobals.worldState = new WorldState();
-			
 			GameGlobals.playerActionsHelper = new PlayerActionsHelper(engine);
 
 			if (engine) {
@@ -89,7 +81,6 @@ define([
 			GameGlobals.campHelper = new CampHelper(engine);
 			GameGlobals.campBalancingHelper = new CampBalancingHelper();
 			GameGlobals.dialogueHelper = new DialogueHelper(engine);
-			GameGlobals.worldHelper = new WorldHelper();
 			GameGlobals.tribeBalancingHelper = new TribeBalancingHelper();
 			GameGlobals.textLoader = new TextLoader();
 			

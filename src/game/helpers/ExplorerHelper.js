@@ -1,14 +1,12 @@
 define([
 	'ash',
 	'game/GameGlobals',
-	'game/constants/CultureConstants',
 	'game/constants/DialogueConstants',
 	'game/constants/ExplorerConstants',
 	'game/constants/StoryConstants',
 ], function (
 	Ash,
 	GameGlobals,
-	CultureConstants,
 	DialogueConstants,
 	ExplorerConstants,
 	StoryConstants,
@@ -75,8 +73,6 @@ define([
 		},
 
 		getForcedExplorerID: function () {
-			// NOTE: make sure there's corresponding dialogues, it's weird if an explorer is forced but doesn't explain why when you talk to them
-			
 			if (GameGlobals.gameState.getStoryFlag(StoryConstants.flags.SPIRITS_SEARCHING_FOR_SPIRITS) && !GameGlobals.tribeHelper.hasDeity()) {
 				return "gambler";
 			}
@@ -96,25 +92,6 @@ define([
 			}
 
 			return null;
-		},
-
-		isFamiliarWithCurrentLevel: function (explorerVO) {
-			let level = GameGlobals.playerHelper.getLevel();
-			return this.isFamiliarWithLevel(explorerVO, level);
-		},
-
-		isFamiliarWithLevel: function (explorerVO, level) {
-			let origin = explorerVO.origin || CultureConstants.origins.UNKNOWN;
-			switch (origin) {
-				case CultureConstants.origins.SURFACE: 
-					return level > 20;
-				case CultureConstants.origins.SLUMS: 
-					return level > 14 && level < 22;
-				case CultureConstants.origins.DARKLEVELS: 
-					return level < 14;
-				default:
-					return false;
-			}
 		},
 		
 	});

@@ -1,14 +1,14 @@
 // persistent data related to the current playthrough
 
-define(['ash'], function (Ash) {
-	let GameState = Ash.Class.extend({
+define(['ash', 'worldcreator/WorldCreatorHelper'], function (Ash, WorldCreatorHelper) {
+	var GameState = Ash.Class.extend({
 
 		constructor: function () {
 			this.reset();
 		},
 
 		reset: function () {
-			this.level = 0; // highest level ordinal visited
+			this.level = 0;
 			this.worldSeed = 0;
 			this.gameStartTimeStamp = 0;
 			this.gameTime = 0; // total tick time passed
@@ -46,7 +46,6 @@ define(['ash'], function (Ash) {
 				lastSelection: {},
 			};
 			
-			// TODO move to meta state
 			this.settings = {
 				hotkeysEnabled: false,
 				hotkeysNumpad: false,
@@ -449,6 +448,66 @@ define(['ash'], function (Ash) {
 			let list = this.stats[name] || this[name];
 			if (list) return list.length;
 			return 0;
+		},
+
+		getLevelOrdinal: function (level) {
+			return WorldCreatorHelper.getLevelOrdinal(this.worldSeed, level);
+		},
+
+		getLevelForOrdinal: function (levelOrdinal) {
+			return WorldCreatorHelper.getLevelForOrdinal(this.worldSeed, levelOrdinal);
+		},
+
+		getCampOrdinal: function (level) {
+			return WorldCreatorHelper.getCampOrdinal(this.worldSeed, level);
+		},
+		
+		getCampOrdinalForLevelOrdinal: function (levelOrdinal) {
+			let level = this.getLevelForOrdinal(levelOrdinal);
+			return this.getCampOrdinal(level);
+		},
+		
+		getLevelsForCamp: function (campOrdinal) {
+			return WorldCreatorHelper.getLevelsForCamp(this.worldSeed, campOrdinal);
+		},
+		
+		getLevelForCamp: function (campOrdinal) {
+			let levelOrdinal = this.getLevelOrdinalForCampOrdinal(campOrdinal);
+			return this.getLevelForOrdinal(levelOrdinal);
+		},
+
+		getLevelOrdinalForCampOrdinal: function (campOrdinal) {
+			return WorldCreatorHelper.getLevelOrdinalForCampOrdinal(this.worldSeed, campOrdinal);
+		},
+		
+		getLevelIndex: function (level) {
+			var campOrdinal = this.getCampOrdinal(level);
+			return WorldCreatorHelper.getLevelIndexForCamp(this.worldSeed, campOrdinal, level);
+		},
+		
+		getMaxLevelIndex: function (level) {
+			var campOrdinal = this.getCampOrdinal(level);
+			return WorldCreatorHelper.getMaxLevelIndexForCamp(this.worldSeed, campOrdinal, level);
+		},
+
+		getTotalLevels: function () {
+			return WorldCreatorHelper.getHighestLevel(this.worldSeed) - WorldCreatorHelper.getBottomLevel(this.worldSeed) + 1;
+		},
+
+		getGroundLevel: function () {
+			return WorldCreatorHelper.getBottomLevel(this.worldSeed);
+		},
+
+		getGroundLevelOrdinal: function () {
+			return WorldCreatorHelper.getLevelOrdinal(this.worldSeed, WorldCreatorHelper.getBottomLevel(this.worldSeed));
+		},
+
+		getSurfaceLevel: function () {
+			return WorldCreatorHelper.getHighestLevel(this.worldSeed);
+		},
+
+		getSurfaceLevelOrdinal: function () {
+			return WorldCreatorHelper.getLevelOrdinal(this.worldSeed, WorldCreatorHelper.getHighestLevel(this.worldSeed));
 		},
 
 		isPlayerInputAccepted: function () {

@@ -55,10 +55,10 @@ function (Ash, ConsoleLogger, WorldConstants, WorldCreatorHelper, WorldCreatorLo
 				var levelVO = worldVO.levels[l];
 				var stages = worldVO.getStages(l);
 				var stagess = stages.map(stage => stage.stage).join(",");
-				WorldCreatorLogger.i("Level " + levelVO.level + ", camp ordinal: " + levelVO.campOrdinal + ", stages: " + stagess + ", sectors: " + levelVO.numSectors);
+				WorldCreatorLogger.i("Level " + levelVO.level + ", camp ordinal: " + levelVO.campOrdinal + ", stages: " + stagess + ", sectors: " + levelVO.numSectors + ", zones: " + levelVO.zones.length);
 				WorldCreatorLogger.i("- passage positions: up: " + levelVO.passageUpPosition + ", down: " + levelVO.passageDownPosition);
 				WorldCreatorLogger.i("- camp position: " + levelVO.campPosition);
-				WorldCreatorLogger.i("- excursion start position: " + levelVO.getExcursionStartPosition());
+				WorldCreatorLogger.i("- excursion start position: " + levelVO.excursionStartPosition);
 				for (let i = 0; i < stages.length; i++) {
 					var stageVO = stages[i];
 					WorldCreatorLogger.i("- stage center positions [" + stageVO.stage + "]: " + levelVO.stageCenterPositions[stageVO.stage].join(","));
@@ -69,8 +69,8 @@ function (Ash, ConsoleLogger, WorldConstants, WorldCreatorHelper, WorldCreatorLo
 		
 		printLevelStructure: function (worldVO) {
 			if (!ConsoleLogger.logInfo) return;
-			for (let l = worldVO.topLevel; l >= worldVO.bottomLevel; l--) {
-				let levelVO = worldVO.levels[l];
+			for (var l = worldVO.topLevel; l >= worldVO.bottomLevel; l--) {
+				var levelVO = worldVO.levels[l];
 				this.printLevel(worldVO, levelVO, function (sectorVO) {});
 			}
 		},
@@ -79,6 +79,7 @@ function (Ash, ConsoleLogger, WorldConstants, WorldCreatorHelper, WorldCreatorLo
 			for (var l = worldVO.topLevel; l >= worldVO.bottomLevel; l--) {
 				var levelVO = worldVO.getLevel(l);
 				this.printLevel(worldVO, levelVO, function (sectorVO) {
+					var criticalPath = sectorVO.getCriticalPathC();
 					var zone = sectorVO.getZoneC();
 					return { char: zone, color: null }
 				});
@@ -121,13 +122,6 @@ function (Ash, ConsoleLogger, WorldConstants, WorldCreatorHelper, WorldCreatorLo
 				+ ", late: " + levelVO.getNumSectorsByStage(WorldConstants.CAMP_STAGE_LATE) + "/" + levelVO.numSectorsByStage[WorldConstants.CAMP_STAGE_LATE]
 			);
 			var print = "seed: " + worldVO.seed + ", " + ", center: " + levelVO.levelCenterPosition + ", bounds: " + levelVO.minX + "." + levelVO.minY + "-" + levelVO.maxX + "." + levelVO.maxY;
-
-			if (levelVO.sectors.length == 0) {
-				WorldCreatorLogger.i(print);
-				WorldCreatorLogger.groupEnd();
-				return;
-			}
-
 			print += "\n";
 			print += "\t";
 			var rx = 20;

@@ -1,7 +1,6 @@
 define([
 	'ash',
 	'text/Text',
-	'utils/ObjectUtils',
 	'utils/UIState',
 	'game/GameGlobals',
 	'game/GlobalSignals',
@@ -17,7 +16,7 @@ define([
 	'game/components/player/ItemsComponent',
 	'game/components/sector/FightEncounterComponent',
 	'game/components/sector/EnemiesComponent'
-], function (Ash, Text, ObjectUtils, UIState, GameGlobals, GlobalSignals, GameConstants, FightConstants, ExplorerConstants, ItemConstants, TextConstants, UIConstants, PlayerLocationNode, PlayerStatsNode, FightNode, ItemsComponent, FightEncounterComponent, EnemiesComponent) {
+], function (Ash, Text, UIState, GameGlobals, GlobalSignals, GameConstants, FightConstants, ExplorerConstants, ItemConstants, TextConstants, UIConstants, PlayerLocationNode, PlayerStatsNode, FightNode, ItemsComponent, FightEncounterComponent, EnemiesComponent) {
 	
 	var FightPopupStateEnum = {
 		CLOSED: 0,
@@ -156,7 +155,8 @@ define([
 			// TODO show fight effect of items in fight ui
 
 			let actionsToShow = this.visibleInFightActions;
-			if (!this.shownInFightActions || !ObjectUtils.keysMatch(this.shownInFightActions, actionsToShow, ["action"])) {
+			let numActionsShown = $("#fight-buttons-infightactions button").length;
+			if (numActionsShown !== actionsToShow.length) {
 				$("#fight-buttons-infightactions").empty();
 				for(let i = 0; i < actionsToShow.length; i++) {
 					let actionDef = actionsToShow[i];
@@ -165,8 +165,6 @@ define([
 				
 				GameGlobals.uiFunctions.createButtons("#fight-buttons-infightactions");
 				GlobalSignals.elementCreatedSignal.dispatch();
-
-				this.shownInFightActions = actionsToShow
 			}
 		},
 

@@ -108,8 +108,6 @@ define([
 			};
 
 			var onLiClicked = function (e) {
-				if (GameGlobals.uiFunctions.shouldIgnoreClick(e)) return;
-
 				var divRes = $(this).find(".res");
 				var divItem = $(this).find(".item");
 				var resourceName = $(divRes).attr("data-resourcename");

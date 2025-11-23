@@ -166,7 +166,7 @@
 			this.updateLayout();
 
 			let position = this.playerPosNodes.head.position.getPosition();
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(position.level);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(position.level);
 
 			// Header
 			let isOutpost = GameGlobals.campBalancingHelper.isOutpost(campOrdinal);
@@ -395,7 +395,7 @@
 		updateWorkerMaxDescriptions: function () {
 			var improvements = this.playerLocationNodes.head.entity.get(SectorImprovementsComponent);
 			var posComponent = this.playerPosNodes.head.position;
-			var campOrdinal = GameGlobals.worldState.getCampOrdinal(posComponent.level);
+			var campOrdinal = GameGlobals.gameState.getCampOrdinal(posComponent.level);
 			var workshops = GameGlobals.levelHelper.getWorkshopsByResourceForCamp(campOrdinal);
 			
 			for (var key in CampConstants.workerTypes) {
@@ -605,18 +605,15 @@
 				let hasUseActionExtra = PlayerActionConstants.hasAction(useActionExtra);
 				let dismantleAction = "dismantle_in_" + key;
 				let canBeDismantled = def.canBeDismantled || false;
-
 				
 				let buildButton = "<button class='action action-build action-location' data-tab='switch-in' action='" + buildAction +"'>" + "" + "</button>";
 				var useButton = "";
 				if (hasUseAction) {
-					let useActionLabel = Text.t(def.useActionNameKey);
-					useButton = "<button class='action action-use action-location btn-narrow' data-tab='switch-in' action='" + useAction + "'>" + useActionLabel + "</button>";
+					useButton = "<button class='action action-use action-location btn-narrow' data-tab='switch-in' action='" + useAction + "'>" + def.useActionName + "</button>";
 				}
 				let useButton2 = "";
 				if (hasUseActionExtra) {
-					let useActionLabel2 = Text.t(def.useActionName2Key);
-					useButton2 = "<button class='action action-use2 action-location btn-narrow' data-tab='switch-in' action='" + useActionExtra + "'>" + useActionLabel2 + "</button>";
+					useButton2 = "<button class='action action-use2 action-location btn-narrow' data-tab='switch-in' action='" + useActionExtra + "'>" + def.useActionName2 + "</button>";
 				}
 				let improveButton = "";
 				if (hasImproveAction) {
@@ -638,10 +635,7 @@
 				tds += "<td>" + useButton + "" + useButton2 + "" + repairButton + "</td>";
 				trs += "<tr id='in-improvements-" + key + "'>" + tds + "</tr>";
 			}
-
-			let countText = Text.t("ui.camp.improvement_count_header");
-			let levelText = Text.t("ui.camp.improvement_level_header");
-			let ths = "<tr class='header-mini'><th></th><th>" + countText + "</th><th>" + levelText + "</th><th></th><th></th><th></th></tr>"
+			let ths = "<tr class='header-mini'><th></th><th>count</th><th>lvl</th><th></th><th></th><th></th></tr>"
 			$table.append(ths);
 			$table.append(trs);
 			

@@ -45,7 +45,7 @@ define(['ash', 'game/vos/PositionVO'], function (Ash, PositionVO) {
 		isOnPath: function (pos, pathStartPos, pathDirection, len) {
 			for (let i = 0; i < len; i++) {
 				var posOnPath = this.getPositionOnPath(pathStartPos, pathDirection, i);
-				if (posOnPath.equals(pos)) {
+				if (pos.equals(posOnPath)) {
 					return true;
 				}
 			}

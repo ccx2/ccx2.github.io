@@ -1,6 +1,6 @@
 define(function () {
 	
-	let ExceptionHandler = {
+	var ExceptionHandler = {
 		
 		exceptionCallback: null,
 		
@@ -25,8 +25,7 @@ define(function () {
 		},
 		
 		handleException: function (ex, msg) {
-			ex.message = ex ? ex.message || msg : msg;
-			
+			ex.message = ex.message || msg;
 			if (ExceptionHandler.exceptionCallback) {
 				ExceptionHandler.exceptionCallback(ex);
 			} else {

@@ -1,6 +1,7 @@
-// creates LevelVOs and any details about them that do not require structure and sectors
+// Handles the first step of world generation, the abstract world template itself
 define([
 	'ash',
+	'game/constants/ExplorerConstants',
 	'game/constants/PositionConstants',
 	'game/constants/TribeConstants',
 	'game/constants/WorldConstants',
@@ -10,61 +11,66 @@ define([
 	'worldcreator/WorldCreatorLogger',
 	'worldcreator/WorldCreatorRandom',
 	'worldcreator/LevelVO',
-], function (Ash, PositionConstants, TribeConstants, WorldConstants, PositionVO, WorldCreatorConstants, WorldCreatorHelper, WorldCreatorLogger, WorldCreatorRandom, LevelVO) {
+	'worldcreator/ZoneVO',
+], function (Ash, ExplorerConstants, PositionConstants, TribeConstants, WorldConstants, PositionVO, WorldCreatorConstants, WorldCreatorHelper, WorldCreatorLogger, WorldCreatorRandom, LevelVO, ZoneVO) {
 	
-	let LevelSkeletonGenerator = {
-
-		generate: function (seed, worldVO, worldTemplateVO) {
-			let topLevel = worldVO.topLevel;
-			let bottomLevel = worldVO.bottomLevel;
-
+	let LevelGenerator = {
+		
+		prepareLevels: function (seed, worldVO) {
+			let topLevel = WorldCreatorHelper.getHighestLevel(seed);
+			let bottomLevel = WorldCreatorHelper.getBottomLevel(seed);
+			
 			for (let l = topLevel; l >= bottomLevel; l--) {
-				let levelVO = new LevelVO(l);
-				let levelTemplateVO = worldTemplateVO.levels[l] || { };
+				let isCampableLevel = WorldCreatorHelper.isCampableLevel(seed, l);
+				let isHardLevel = WorldCreatorHelper.isHardLevel(seed, l);
+				let notCampableReason = isCampableLevel ? null : WorldCreatorHelper.getNotCampableReason(seed, l);
+				let ordinal = WorldCreatorHelper.getLevelOrdinal(seed, l);
+				let campOrdinal = WorldCreatorHelper.getCampOrdinal(seed, l);
+				let habitability = isCampableLevel ? WorldCreatorConstants.getHabitability(campOrdinal) : 0;
+				let raidDangerFactor = isCampableLevel ? WorldCreatorConstants.getRaidDangerFactor(campOrdinal) : 0;
+				let numSectors = WorldCreatorHelper.getNumSectorsForLevel(seed, l);
 
-				this.generateLevel(seed, worldVO, levelTemplateVO, levelVO);
-
-				worldVO.levels[levelVO.level] = levelVO;
+				if (!isCampableLevel) {
+					WorldCreatorLogger.i("level " + l + " not campable reason: " + notCampableReason);
+				}
+				
+				let levelVO = new LevelVO(l, ordinal, campOrdinal, isCampableLevel, isHardLevel, notCampableReason, habitability, raidDangerFactor, numSectors);
+				levelVO.campPosition = worldVO.campPositions[l];
+				levelVO.passageUpPosition = worldVO.passagePositions[l].up;
+				levelVO.passageDownPosition = worldVO.passagePositions[l].down;
+				levelVO.passagePositions = [];
+				if (levelVO.passageUpPosition) levelVO.passagePositions.push(levelVO.passageUpPosition);
+				if (levelVO.passageDownPosition) levelVO.passagePositions.push(levelVO.passageDownPosition);
+				levelVO.numSectorsByStage[WorldConstants.CAMP_STAGE_EARLY] = WorldCreatorHelper.getNumSectorsForLevelStage(worldVO.seed, levelVO.campOrdinal, levelVO.level, WorldConstants.CAMP_STAGE_EARLY);
+				levelVO.numSectorsByStage[WorldConstants.CAMP_STAGE_LATE] = WorldCreatorHelper.getNumSectorsForLevelStage(worldVO.seed, levelVO.campOrdinal, levelVO.level, WorldConstants.CAMP_STAGE_LATE);
+				levelVO.stageCenterPositions = this.getStageCenterPositions(worldVO, levelVO);
+				levelVO.levelCenterPosition = this.getLevelCenterPosition(worldVO, levelVO);
+				levelVO.excursionStartPosition = this.getExcursionStartPosition(worldVO, levelVO);
+				levelVO.zones = this.generateZones(seed, levelVO);
+				levelVO.seaPadding = this.getSeaPadding(seed, levelVO);
+				levelVO.predefinedExplorers = this.getPredefinedExplorers(seed, l);
+				levelVO.numInvestigateSectors = this.getNumInvestigateSectors(seed, l);
+				levelVO.luxuryResources = this.getLuxuryResources(seed, l, campOrdinal, worldVO.levels);
+				worldVO.addLevel(levelVO);
 			}
 		},
-
-		generateLevel: function (seed, worldVO, levelTemplateVO, levelVO) {
-			let l = levelVO.level;
-
-			let levelOrdinal = WorldCreatorHelper.getLevelOrdinal(seed, l);
-			let campOrdinal = WorldCreatorHelper.getCampOrdinal(seed, l);
-			let isCampableLevel = WorldCreatorHelper.isCampableLevel(seed, l);
-
-			levelVO.levelOrdinal = levelOrdinal;
-			levelVO.campOrdinal = campOrdinal;
-			levelVO.isCampable = isCampableLevel;
-			levelVO.isHard = WorldCreatorHelper.isHardLevel(seed, l);
-			levelVO.notCampableReason = isCampableLevel ? null : levelTemplateVO.notCampableReason || WorldCreatorHelper.getNotCampableReason(seed, l);
-			levelVO.habitability = isCampableLevel ? levelTemplateVO.habitability || WorldCreatorConstants.getHabitability(campOrdinal) : 0;
-			levelVO.raidDangerFactor = isCampableLevel ? WorldCreatorConstants.getRaidDangerFactor(campOrdinal) : 0;
-
-			let numSectors = WorldCreatorHelper.getNumSectorsForLevel(seed, l);
-			levelVO.numSectors = numSectors;
-			levelVO.maxSectors = numSectors + WorldCreatorConstants.getMaxSectorOverflow(levelOrdinal);
-			
-			levelVO.campPosition = worldVO.campPositions[l] || null;
-			levelVO.passageUpPosition = worldVO.passagePositions[l].up;
-			levelVO.passageUpType = worldVO.passageTypes[l].up;
-			levelVO.passageDownPosition = worldVO.passagePositions[l].down;
-			levelVO.passageDownType = worldVO.passageTypes[l].down;
-			levelVO.passagePositions = [];
-			if (levelVO.passageUpPosition) levelVO.passagePositions.push(levelVO.passageUpPosition);
-			if (levelVO.passageDownPosition) levelVO.passagePositions.push(levelVO.passageDownPosition);
-			levelVO.numSectorsByStage[WorldConstants.CAMP_STAGE_EARLY] = WorldCreatorHelper.getNumSectorsForLevelStage(worldVO.seed, levelVO.campOrdinal, levelVO.level, WorldConstants.CAMP_STAGE_EARLY);
-			levelVO.numSectorsByStage[WorldConstants.CAMP_STAGE_LATE] = WorldCreatorHelper.getNumSectorsForLevelStage(worldVO.seed, levelVO.campOrdinal, levelVO.level, WorldConstants.CAMP_STAGE_LATE);
-			levelVO.stageCenterPositions = this.getStageCenterPositions(worldVO, levelVO);
-			levelVO.levelCenterPosition = this.getLevelCenterPosition(worldVO, levelVO);
-			levelVO.seaPadding = this.getSeaPadding(seed, levelVO);
-			levelVO.workshopResource = this.getWorkshopResource(seed, worldVO, levelTemplateVO, levelVO);
-
-			// stuff that might need to be adjusted on worlds from old saves
-			levelVO.numInvestigateSectors = this.getNumInvestigateSectors(seed, l);
-			levelVO.luxuryResources = this.getLuxuryResources(seed, l, campOrdinal, worldVO.levels);
+		
+		generateZones: function (seed, levelVO) {
+			let result = [];
+			result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_ENTRANCE));
+			if (levelVO.isCampable) {
+				if (levelVO.level != 13) {
+					result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_PASSAGE_TO_CAMP));
+				}
+				result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_POI_1));
+				result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_POI_2));
+				result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_CAMP_TO_PASSAGE));
+				result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_EXTRA_CAMPABLE));
+			} else {
+				result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_PASSAGE_TO_PASSAGE));
+				result.push(new ZoneVO(levelVO.campOrdinal, WorldConstants.ZONE_EXTRA_UNCAMPABLE));
+			}
+			return result;
 		},
 		
 		getStageCenterPositions: function (worldVO, levelVO) {
@@ -125,25 +131,29 @@ define([
 			return result;
 		},
 		
+		getExcursionStartPosition: function (worldVO, levelVO) {
+			if (levelVO.isCampable) {
+				return levelVO.campPosition;
+			}
+			if (levelVO.level < 13) {
+				return levelVO.passageUpPosition;
+			}
+			return levelVO.passageDownPosition;
+		},
+		
+		getPredefinedExplorers: function (seed, level) {
+			let result = [];
+			let isCampableLevel = WorldCreatorHelper.isCampableLevel(seed, level);
+			if (!isCampableLevel) return result;
+			let campOrdinal = WorldCreatorHelper.getCampOrdinal(seed, level);
+			let explorer = ExplorerConstants.predefinedExplorers[campOrdinal];
+			if (!explorer) return [];
+			return [ explorer ];
+		},
+		
 		getNumInvestigateSectors: function (seed, level) {
 			let topLevel = WorldCreatorHelper.getHighestLevel(seed);
 			return WorldConstants.getNumInvestigateSectors(level, topLevel);
-		},
-
-		getWorkshopResource: function (seed, worldVO, levelTemplateVO, levelVO) {
-			if (levelTemplateVO && levelTemplateVO.workshopResource) return levelTemplateVO.workshopResource;
-
-			let campOrdinal = levelVO.campOrdinal;
-			let levelIndex = WorldCreatorHelper.getLevelIndexForCamp(seed, campOrdinal, levelVO.level);
-			let maxLevelIndex = WorldCreatorHelper.getMaxLevelIndexForCamp(seed, campOrdinal, levelVO.level);
-			
-			if (levelVO.isCampable && (campOrdinal === WorldConstants.CAMP_ORDINAL_FUEL || campOrdinal == WorldConstants.CAMP_ORDINAL_FUEL_2))
-				return "fuel";
-			if (levelIndex == maxLevelIndex && (campOrdinal === WorldConstants.CAMP_ORDINAL_GREENHOUSE_1 || campOrdinal == WorldConstants.CAMP_ORDINAL_GREENHOUSE_2))
-				return "herbs";
-			if (levelVO.level == worldVO.bottomLevel || (levelVO.isCampable && campOrdinal == WorldConstants.CAMP_ORDINAL_RUBBER_2))
-				return "rubber";
-			return null;
 		},
 		
 		getLuxuryResources: function (seed, level, campOrdinal, previousLevels) {
@@ -175,7 +185,7 @@ define([
 				validLuxuries = Object.values(TribeConstants.luxuryType);
 			}
 			
-			let selectedLuxury = WorldCreatorRandom.randomItemFromArray(seed, validLuxuries);
+			let selectedLuxury = WorldCreatorRandom.getRandomItemFromArray(seed / 2 + 100 + campOrdinal * 77, validLuxuries);
 			
 			return [ selectedLuxury ];
 		},
@@ -195,5 +205,5 @@ define([
 		
 	};
 	
-	return LevelSkeletonGenerator;
+	return LevelGenerator;
 });

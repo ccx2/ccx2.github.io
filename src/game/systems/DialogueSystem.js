@@ -3,16 +3,15 @@ define([
 	'ash',
 	'game/GlobalSignals',
 	'game/GameGlobals',
+	'game/constants/GameConstants',
 	'game/constants/DialogueConstants',
 	'game/constants/ExplorerConstants',
 	'game/constants/StoryConstants',
     'game/nodes/player/DialogueNode',
 	'game/components/player/DialogueComponent'
-], function (Ash, GlobalSignals, GameGlobals, DialogueConstants, ExplorerConstants, StoryConstants, DialogueNode, DialogueComponent) {
+], function (Ash, GlobalSignals, GameGlobals, GameConstants, DialogueConstants, ExplorerConstants, StoryConstants, DialogueNode, DialogueComponent) {
 	
 	let DialogueSystem = Ash.System.extend({
-
-		context: "DialogueSystem",
 
         dialogueNodes: null,
 
@@ -89,7 +88,7 @@ define([
 			let explorerScore = function (explorerVO) {
 				for (let i = 0; i < preferredExplorers.length; i++) {
 					let preferredExplorerID = preferredExplorers[i];
-					if (explorerVO && explorerVO.id && explorerVO.id.indexOf(preferredExplorerID) >= 0) {
+					if (explorerVO.id.indexOf(preferredExplorerID) >= 0) {
 						return 1000 - i;
 					}
 				}
@@ -122,7 +121,9 @@ define([
 			let pageID = this.selectFirstPage();
 
 			if (!pageID && pageID !== 0) {
-				log.e("no first page found for dialogue " + GameGlobals.dialogueHelper.getCurrentDialogeID(), this);
+				log.e("no first page found for dialogue");
+				if (GameConstants.isDebugVersion) debugger
+
 				return;
 			}
 			
@@ -192,7 +193,8 @@ define([
 			let currentPageVO = GameGlobals.dialogueHelper.getCurrentPageVO();
 
 			if (!currentPageVO) {
-				log.e("no current page found for dialogue " + GameGlobals.dialogueHelper.getCurrentDialogeID(), this);
+				if (GameConstants.isDebugVersion) debugger
+				log.w("no page found");
 				this.endDialogue();
 				return;
 			}
@@ -204,12 +206,14 @@ define([
 			let optionVO = currentPageVO.optionsByID[optionID];
 
 			if (!optionVO) {
-				log.e("no option '" + optionID + "' found for dialogue " + GameGlobals.dialogueHelper.getCurrentDialogeID(), this);
+				if (GameConstants.isDebugVersion) debugger
+				log.w("no option for id " + optionID);
 				this.endDialogue();
 				return;
 			}
 
 			// TODO check conditions
+			// TODO DEDUCT COSTS
 
 			let responsePageID = optionVO.responsePageID;
 

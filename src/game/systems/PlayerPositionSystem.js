@@ -144,8 +144,9 @@ define([
 		updateLevelEntities: function (updateAll) {
 			let playerPos = this.playerPositionNodes.head.position;
 			let startPos = playerPos.getPosition();
+			let levelpos;
 			for (let levelNode = this.levelNodes.head; levelNode; levelNode = levelNode.next) {
-				let levelpos = levelNode.level.position;
+				levelpos = levelNode.level.position;
 				if (levelpos == playerPos.level && !levelNode.entity.has(CurrentPlayerLocationComponent)) {
 					levelNode.entity.add(new CurrentPlayerLocationComponent());
 					if (!GameGlobals.levelHelper.isVisited(levelNode.entity)) {
@@ -194,10 +195,6 @@ define([
 			if (this.playerLocationNodes.head) {
 				this.playerLocationNodes.head.entity.remove(CurrentPlayerLocationComponent);
 			}
-
-			let position = sector.get(PositionComponent);
-			
-			GameGlobals.worldState.addRevealedLevel(position.level);
 			
 			sector.add(new CurrentPlayerLocationComponent());
 			
@@ -260,10 +257,9 @@ define([
 		handleNewLevel: function (levelNode, levelPos) {
 			let levelStatus = levelNode.entity.get(LevelStatusComponent);
 			levelStatus.isVisited = true;
-			let levelOrdinal = GameGlobals.worldState.getLevelOrdinal(levelPos);
-			let campOrdinal = GameGlobals.worldState.getCampOrdinal(levelPos);
+			let levelOrdinal = GameGlobals.gameState.getLevelOrdinal(levelPos);
+			let campOrdinal = GameGlobals.gameState.getCampOrdinal(levelPos);
 			GameGlobals.gameState.level = Math.max(GameGlobals.gameState.level, levelOrdinal);
-
 			if (levelPos !== 13) GameGlobals.playerActionFunctions.unlockFeature("levels");
 			
 			if (this.isGroundLevel(levelPos)) {
@@ -280,8 +276,8 @@ define([
 		},
 
 		getRegularLevelMessage: function (levelNode, levelPos) {			
-			let surfaceLevel = GameGlobals.worldState.getSurfaceLevel();
-			let groundLevel = GameGlobals.worldState.getGroundLevel();
+			let surfaceLevel = GameGlobals.gameState.getSurfaceLevel();
+			let groundLevel = GameGlobals.gameState.getGroundLevel();
 			
 			let playerPos = this.playerPositionNodes.head.position;
 			if (playerPos.inCamp) return;
@@ -339,7 +335,7 @@ define([
 
 			let previousSectorEntity = this.previousLocation;
 
-			let levelCampOrdinal = GameGlobals.worldState.getCampOrdinal(sectorPos.level);
+			let levelCampOrdinal = GameGlobals.gameState.getCampOrdinal(sectorPos.level);
 			let isLevelCampable = GameGlobals.levelHelper.isLevelCampable(sectorPos.level);
 
 			let isEarlyZone = featuresComponentCurrent.isEarlyZone();
@@ -392,26 +388,16 @@ define([
 			
 			let playerPos = this.playerPositionNodes.head.position;
 			log.w("Player location could not be found (" + playerPos.level + "." + playerPos.sectorId() + ").");
-
 			if (this.lastValidPosition) {
 				log.w("Moving to a known valid position " + this.lastValidPosition);
 				GameGlobals.playerHelper.moveTo(this.lastValidPosition.level, this.lastValidPosition.sectorX, this.lastValidPosition.sectorY, this.lastValidPosition.inCamp, "system", false);
 			} else {
-				let newPos = this.getFallbackPosition();
-				log.w("Moving to a fallback position " + newPos);
+				let sectors = GameGlobals.levelHelper.getSectorsByLevel(playerPos.level);
+				let newPos = sectors[0].get(PositionComponent);
+				log.w("Moving to random position " + newPos);
 				GameGlobals.playerHelper.moveTo(newPos.level, newPos.sectorX, newPos.sectorY, false, "system", false);
 			}
-
 			this.lastUpdatePosition = null;
-		},
-
-		getFallbackPosition: function () {
-			let playerPos = this.playerPositionNodes.head.position;
-			let levelSectors = GameGlobals.levelHelper.getSectorsByLevel(playerPos.level);
-			if (levelSectors.length > 0) return sectors[0].get(PositionComponent);
-			let startSector = GameGlobals.levelHelper.getCampSectorOnLevel(13);
-			if (startSector) return startSector.get(PositionComponent);
-			log.e("can't find any sector for fallback position")
 		},
 		
 		showLevelPopup: function (title, msg) {
@@ -421,11 +407,11 @@ define([
 		},
 
 		isGroundLevel: function (level) {
-			return level == GameGlobals.worldState.getGroundLevel();
+			return level == GameGlobals.gameState.getGroundLevel();
 		},
 
 		isSurfaceLevel: function (level) {
-			return level == GameGlobals.worldState.getSurfaceLevel();
+			return level == GameGlobals.gameState.getSurfaceLevel();
 		},
 
 		getGroundMessage: function () {

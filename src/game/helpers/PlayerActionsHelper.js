@@ -594,7 +594,7 @@ define([
 				if (typeof requirements.inCamp !== "undefined") {
 					if (typeof requirements.inCamp == "number") {
 						let requiredValue = requirements.inCamp;
-						let positionCampOrdinal = GameGlobals.worldState.getCampOrdinal(positionComponent.level);
+						let positionCampOrdinal = GameGlobals.gameState.getCampOrdinal(positionComponent.level);
 						let currentValue = inCamp ? positionCampOrdinal : false;
 						if (requiredValue != currentValue) return { value: 0, reason: this.getDisabledReasonVO(null, null, null, "Must be in camp " + requiredValue) };
 					} else {
@@ -996,8 +996,8 @@ define([
 					let campSector = this.nearestCampNodes.head ? this.nearestCampNodes.head.entity : sector;
 					
 					if (action && action.indexOf("build_out") >= 0) {
-						let campOrdinal = GameGlobals.worldState.getCampOrdinal(positionComponent.level);
-						let campLevel = GameGlobals.worldState.getLevelForCamp(campOrdinal);
+						let campOrdinal = GameGlobals.gameState.getCampOrdinal(positionComponent.level);
+						let campLevel = GameGlobals.gameState.getLevelForCamp(campOrdinal);
 						campSector = GameGlobals.levelHelper.getCampSectorOnLevel(campLevel);
 					}
 
@@ -1092,14 +1092,14 @@ define([
 				if (requirements.sector) {
 					if (typeof requirements.sector.ground != "undefined") {
 						let requiredValue = requirements.sector.ground;
-						let currentValue = positionComponent.level == GameGlobals.worldState.getGroundLevel();
+						let currentValue = positionComponent.level == GameGlobals.gameState.getGroundLevel();
 						let result = this.checkRequirementsBoolean(requiredValue, currentValue);
 						if (result) return result;
 					}
 
 					if (typeof requirements.sector.surface != "undefined") {
 						let requiredValue = requirements.sector.surface;
-						let currentValue = positionComponent.level == GameGlobals.worldState.getSurfaceLevel();
+						let currentValue = positionComponent.level == GameGlobals.gameState.getSurfaceLevel();
 						let result = this.checkRequirementsBoolean(requiredValue, currentValue, "Must not be on Surface", "Must be on the Surface");
 						if (result) return result;
 					}
@@ -1343,7 +1343,7 @@ define([
 					}
 					
 					if (typeof requirements.sector.acessible_to_workers != "undefined") {
-						var campOrdinal = GameGlobals.worldState.getCampOrdinal(positionComponent.level);
+						var campOrdinal = GameGlobals.gameState.getCampOrdinal(positionComponent.level);
 						var campCount = GameGlobals.gameState.numCamps;
 						var requiredValue = requirements.sector.acessible_to_workers;
 						var currentValue = campCount >= campOrdinal;
@@ -2002,7 +2002,7 @@ define([
 				case "build_out_passage_up_elevator":
 				case "build_out_passage_up_hole":
 					let levelOrdinal = action.substring(action.lastIndexOf("_") + 1);
-					let campOrdinal = GameGlobals.worldState.getCampOrdinalForLevelOrdinal(levelOrdinal);
+					let campOrdinal = GameGlobals.gameState.getCampOrdinalForLevelOrdinal(levelOrdinal);
 					// exception_ passage up from level 13
 					if (baseActionID.indexOf("_up_") >= 0) {
 						 if (campOrdinal <= WorldConstants.CAMP_ORDINAL_GROUND) {
@@ -3111,7 +3111,6 @@ define([
 		},
 		
 		getCurrentImprovementCountOnLevel: function (level, improvementID) {
-			if (!GameGlobals.worldHelper.isLevelGenerated(level)) return 0;
 			let entity = GameGlobals.levelHelper.getLevelEntityForPosition(level);
 			if (!entity) return;
 			let levelStatus = entity.get(LevelStatusComponent);
@@ -3126,8 +3125,8 @@ define([
 				return GameGlobals.campHelper.getTotalNumImprovementsBuilt(improvementName);
 			} else {
 				let result = 0;
-				let minLevel =  GameGlobals.worldState.getGroundLevel();
-				let maxLevel = GameGlobals.worldState.getSurfaceLevel();
+				let minLevel =  GameGlobals.gameState.getGroundLevel();
+				let maxLevel = GameGlobals.gameState.getSurfaceLevel();
 				for (let i = minLevel; i <= maxLevel; i++) {
 					result += this.getCurrentImprovementCountOnLevel(i, improvementID);
 				}

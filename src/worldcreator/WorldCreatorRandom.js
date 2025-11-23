@@ -5,9 +5,12 @@ define([
 	'utils/PathFinding',
 	'worldcreator/WorldCreatorLogger',
 	'game/constants/PositionConstants',
+	'game/constants/GameConstants',
+	'game/constants/MovementConstants',
+	'game/constants/WorldConstants',
 	'game/vos/PositionVO',
 	'game/vos/PathConstraintVO'],
-function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, PositionVO, PathConstraintVO) {
+function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, GameConstants, MovementConstants, WorldConstants, PositionVO, PathConstraintVO) {
 
 	var WorldCreatorRandom = {
 		
@@ -360,12 +363,12 @@ function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, Po
 			return result;
 		},
 		
-		randomItemFromArray: function (seed, array) {
+		getRandomItemFromArray: function (seed, array) {
 			let index = this.randomInt(seed, 0, array.length);
 			return array[index];
 		},
 		
-		randomIntFromRange: function (seed, range) {
+		getRandomIntFromRange: function (seed, range) {
 			let isRange = typeof(range) !== "number";
 			if (!isRange) return range;
 			let min = Math.round(range[0])
@@ -375,10 +378,10 @@ function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, Po
 		
 		// Pseudo-random int between min (inclusive) and max (exclusive)
 		randomInt: function (seed, min, max) {
-			if (min === undefined) min = 0;
-			if (max === undefined) max = 10000;
-
-			return Math.floor(this.random(seed) * (max - min) + min);
+			if (!isFinite(seed) || isNaN(seed)) {
+				throw new Error("Invalid seed for WorldCreatorRandom.randomInt: " + seed);
+			}
+			return Math.floor(Math.min(max - 1, Math.floor(this.random(seed) * (max - min + 1)) + min));
 		},
 		
 		randomBool: function (seed, probability) {
@@ -387,19 +390,9 @@ function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, Po
 		},
 		
 		// Pseudo-random number based on the seed, evenly distributed between 0-1
-		// with additional adjustment that consecutive numbers are not similar (even and odd are very different)
 		random: function (seed) {
-			if (!isFinite(seed) || isNaN(seed)) {
-				log.e("invalid seed for WorldCreatorRandom.random: " + seed);
-				seed = 0;
-			}
-
-			if (seed % 4 === 0) seed = seed - 2222;
-			if (seed % 2 === 0) seed = seed + 1111;
-
-			let mod1 = 172;
-			let mod2 = 7823;
-
+			var mod1 = 7247;
+			var mod2 = 7823;
 			let result = (seed*seed) % (mod1*mod2);
 			return result/(mod1*mod2);
 		},
@@ -422,13 +415,16 @@ function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, Po
 				return [];
 			}
 			
-			let makePathSectorVO = function (position) {
+			var cachedPath = this.getCachedPath(worldVO, startPos, endPos, blockByBlockers, stage, anyPath);
+			if (cachedPath) {
+				//log.i("got cached path " + startPos + " to " + endPos);
+				return cachedPath;
+			}
+			
+			var makePathSectorVO = function (position) {
 				if (!position) return null;
-				let levelVO = worldVO.getLevel(position.level);
-				if (!levelVO.hasSector(position.sectorX, position.sectorY)) {
-					debugger;
-					return null;
-				}
+				var levelVO = worldVO.getLevel(position.level);
+				if (!levelVO.hasSector(position.sectorX, position.sectorY)) return null;
 				return {
 					position: position,
 					isVisited: false,
@@ -436,10 +432,10 @@ function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, Po
 				};
 			};
 			
-			let startVO = makePathSectorVO(startPos);
-			let goalVO = makePathSectorVO(endPos);
+			var startVO = makePathSectorVO(startPos);
+			var goalVO = makePathSectorVO(endPos);
 			
-			let utilities = {
+			var utilities = {
 				findPassageDown: function (level) {
 					var levelVO = worldVO.getLevel(level);
 					let result = levelVO.findPassageDown();
@@ -451,6 +447,7 @@ function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, Po
 					return result ? makePathSectorVO(result.position) : null;
 				},
 				getSectorByPosition: function (level, sectorX, sectorY) {
+					var levelVO = worldVO.getLevel(level);
 					return makePathSectorVO(new PositionVO(level, sectorX, sectorY));
 				},
 				getSectorNeighboursMap: function (pathSectorVO) {
@@ -474,7 +471,33 @@ function (Ash, MathUtils, PathFinding, WorldCreatorLogger, PositionConstants, Po
 			
 			let result = PathFinding.findPath(startVO, goalVO, utilities, settings);
 			
+			this.addCachedPath(worldVO, startPos, endPos, blockByBlockers, stage, result);
+			
 			return result;
+		},
+		
+		getCachedPath: function (worldVO, startPos, endPos, blockByBlockers, stage, anyPath) {
+			let res = worldVO.getPath(startPos, endPos, blockByBlockers, stage, anyPath);
+			if (res) return res;
+			if (!stage) {
+				res = worldVO.getPath(startPos, endPos, blockByBlockers, WorldConstants.CAMP_STAGE_EARLY, anyPath)
+					|| worldVO.getPath(startPos, endPos, blockByBlockers, WorldConstants.CAMP_STAGE_LATE, anyPath);
+			}
+			return res;
+		},
+		
+		addCachedPath: function (worldVO, startPos, endPos, blockByBlockers, stage, path) {
+			if (path) {
+				// cache path and subpaths
+				for (var p = path.length; p > 0; p--) {
+					let subPath = path.slice(0, p);
+					let subPathEndPos = subPath[subPath.length - 1];
+					worldVO.addPath(startPos, subPathEndPos, blockByBlockers, stage, subPath);
+				}
+			} else {
+				// only cache the fact that there is no path
+				worldVO.addPath(startPos, endPos, blockByBlockers, stage, path);
+			}
 		},
 		
 	};

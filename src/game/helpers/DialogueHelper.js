@@ -102,12 +102,6 @@ define(['ash',
                 }
             },
 
-            getCurrentDialogeID: function () {
-                if (!this.dialogueNodes.head.dialogue) return "(none)";
-                if (!this.dialogueNodes.head.dialogue.activeDialogue) return "(none)";
-                return this.dialogueNodes.head.dialogue.activeDialogue.dialogueID;
-            },
-
             getCurrentPageVO: function () {
                 if (!this.dialogueNodes.head) return null;
 
@@ -152,13 +146,9 @@ define(['ash',
                     if (conditions.explorer.trust && conditions.explorer.trust > explorerVO.trust) return false;
                     if (conditions.explorer.maxTrust && conditions.explorer.maxTrust < explorerVO.trust) return false;
                     if (typeof conditions.explorer.inParty !== "undefined" && conditions.explorer.inParty != explorerVO.inParty) return false;
-			        let forcedExplorerID = GameGlobals.explorerHelper.getForcedExplorerID();
-                    let isForced = explorerVO.id == forcedExplorerID
-                    if (typeof conditions.explorer.isForced !== "undefined" && conditions.explorer.isForced != isForced) return false;
                     if (conditions.explorer.injured && explorerVO.injuredTimer <= 0) return false;
                     if (conditions.explorer.abilityType && explorerVO.abilityType != conditions.explorer.abilityType) return false;
                     if (conditions.explorer.quest && GameGlobals.storyHelper.getExplorerQuestStories(explorerVO).indexOf(conditions.explorer.quest) <0) return false;
-                    if (typeof conditions.explorer.isFamiliarLevel !== "undefined" && conditions.explorer.isFamiliarLevel != GameGlobals.explorerHelper.isFamiliarWithCurrentLevel(explorerVO)) return false;
                     if (conditions.explorer.meetCampOrdinal 
                         && GameGlobals.playerActionsHelper.checkRequirementsRange(conditions.explorer.meetCampOrdinal, explorerVO.meetCampOrdinal)) return false;
                 }
@@ -225,8 +215,8 @@ define(['ash',
                     }
                 }
 
-                result.surfaceLevel = GameGlobals.worldState.getSurfaceLevel();
-                result.surfaceLevelMinus1 = GameGlobals.worldState.getSurfaceLevel() - 1;
+                result.surfaceLevel = GameGlobals.gameState.getSurfaceLevel();
+                result.surfaceLevelMinus1 = GameGlobals.gameState.getSurfaceLevel() - 1;
 
                 return result;
             },

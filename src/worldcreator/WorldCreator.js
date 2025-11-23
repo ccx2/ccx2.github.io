@@ -2,80 +2,72 @@
 // A world (WorldVO) consists of LevelVOs which in turn consist of SectorVOs.
 define([
 	'ash',
-	'utils/FlowUtils',
+	'utils/MathUtils',
 	'game/constants/WorldConstants',
 	'worldcreator/WorldCreatorHelper',
+	'worldcreator/WorldCreatorRandom',
 	'worldcreator/WorldCreatorDebug',
 	'worldcreator/WorldCreatorLogger',
 	'worldcreator/EnemyCreator',
 	'worldcreator/WorldVO',
-	'worldcreator/WorldSkeletonGenerator',
-	'worldcreator/LevelSkeletonGenerator',
-	'worldcreator/LevelStructureGenerator',
-	'worldcreator/LevelFeaturesGenerator',
-	'worldcreator/SectorFeaturesGenerator',
-	'worldcreator/SectorContentGenerator',
+	'worldcreator/LevelVO',
+	'worldcreator/SectorVO',
+	'worldcreator/WorldGenerator',
+	'worldcreator/LevelGenerator',
+	'worldcreator/StructureGenerator',
+	'worldcreator/SectorGenerator',
 ], function (
-	Ash, FlowUtils, WorldConstants,
-	WorldCreatorHelper, WorldCreatorDebug, WorldCreatorLogger, EnemyCreator,
-	WorldVO,
-	WorldSkeletonGenerator, LevelSkeletonGenerator, LevelStructureGenerator, LevelFeaturesGenerator, SectorFeaturesGenerator, SectorContentGenerator
+	Ash, MathUtils, WorldConstants,
+	WorldCreatorHelper, WorldCreatorRandom, WorldCreatorDebug, WorldCreatorLogger, EnemyCreator,
+	WorldVO, LevelVO, SectorVO, WorldGenerator, LevelGenerator, StructureGenerator, SectorGenerator,
 ) {
-	let WorldCreator = {
-		
-		context: "WorldCreator",
+	var context = "WorldCreator";
 
-		createWorld: function (seed, worldTemplateVO) {
+	var WorldCreator = {
+
+		world: null,
+
+		prepareWorld: function (seed, itemsHelper) {
 			return new Promise(function(resolve, reject) {
-				worldTemplateVO = worldTemplateVO || { levels: [] };
-
-				let version = WorldConstants.version;
-
-				if (worldTemplateVO.seed) seed = worldTemplateVO.seed;
-				if( worldTemplateVO.version) version = worldTemplateVO.version;
-
-				let worldVO = new WorldVO(seed, version);
-
-				let tasks = [];
-				tasks.push(() => WorldCreator.generateWorldSkeleton(seed, worldVO, worldTemplateVO));
-				tasks.push(() => WorldCreator.generateLevelSkeletons(seed, worldVO, worldTemplateVO));
-				tasks.push(() => WorldCreator.resetInternalData(seed, worldVO));
-				
-				WorldCreatorLogger.start(seed);
-					
-				FlowUtils.executeTasksInSteps(tasks, () => {
-					WorldCreatorLogger.end();
-					resolve(worldVO);
-				}, (ex) => {
-					WorldCreatorLogger.end();
-					reject(ex);
-				});
-				
-			}.bind(this));
-		},
-
-		generateLevels: function (seed, worldVO, worldTemplateVO, levels, itemsHelper) {
-			return new Promise(function(resolve, reject) {
-				worldTemplateVO = worldTemplateVO || { levels: [] };
+			
+				let tasks = [
+					() => {
+						WorldCreatorLogger.i("Step 1/4: World template", this.context);
+						WorldGenerator.prepareWorld(seed, this.world);
+						WorldCreatorDebug.printWorldTemplate(this.world);
+					},
+					() => {
+						WorldCreatorLogger.i("Step 2/4: Level templates", this.context);
+						LevelGenerator.prepareLevels(seed, this.world);
+						WorldCreatorDebug.printLevelTemplates(this.world);
+					},
+					() => {
+						WorldCreatorLogger.i("Step 3/4: Level structure", this.context);
+						StructureGenerator.prepareStructure(seed, this.world);
+						WorldCreatorDebug.printLevelStructure(this.world);
+					},
+					() => {
+						WorldCreatorLogger.i("Step 4/4: Sector templates", this.context);
+						SectorGenerator.prepareSectors(seed, this.world, itemsHelper, enemyCreator);
+						//WorldCreatorDebug.printSectorTemplates(this.world);
+					},
+					() => {
+						WorldCreatorLogger.i("Done");
+					}
+				];
 				
 				let enemyCreator = new EnemyCreator();
 				enemyCreator.createEnemies();
-
-				// generation order shouldn't matter but make it predictable anyway
-				levels = levels.sort((a, b) => WorldCreatorHelper.getLevelOrdinal(seed, a) - WorldCreatorHelper.getLevelOrdinal(seed, b));
-
-				let tasks = [];
-				tasks.push(() => WorldCreator.generateLevelStructure(seed, worldVO, worldTemplateVO, levels));
-				tasks.push(() => WorldCreator.generateLevelFeatures(seed, worldVO, worldTemplateVO, levels));
-				tasks.push(() => WorldCreator.generateSectorFeatures(seed, worldVO, worldTemplateVO, levels, itemsHelper));
-				tasks.push(() => WorldCreator.generateSectorContent(seed, worldVO, worldTemplateVO, levels, enemyCreator));
-				tasks.push(() => WorldCreator.resetInternalData(seed, worldVO));
 				
 				WorldCreatorLogger.start(seed);
+
+				let topLevel = WorldCreatorHelper.getHighestLevel(seed);
+				let bottomLevel = WorldCreatorHelper.getBottomLevel(seed);
+				this.world = new WorldVO(seed, topLevel, bottomLevel);
 					
-				FlowUtils.executeTasksInSteps(tasks, () => {
+				this.executeTasksInSteps(tasks, () => {
 					WorldCreatorLogger.end();
-					resolve(worldVO);
+					resolve(this.world);
 				}, (ex) => {
 					WorldCreatorLogger.end();
 					reject(ex);
@@ -83,53 +75,98 @@ define([
 				
 			}.bind(this));
 		},
-
-		generateWorldSkeleton: function (seed, worldVO, worldTemplateVO) {
-			WorldCreatorLogger.i("Step 1: World skeleton", this.context);
-
-			WorldSkeletonGenerator.generate(seed, worldVO, worldTemplateVO);
-
-			WorldCreatorDebug.printWorldTemplate(worldVO);
+		
+		// TODO put this (executeTasksInSteps + executeTaskInSteps) to some utils
+		
+		executeTasksInSteps: function (tasks, cb, errorcb) {
+			this.executeTaskInSteps(tasks, 0, cb, errorcb);
+		},
+		
+		executeTaskInSteps: function (tasks, i, cb, errorcb) {
+			if (tasks.length == 0 || i >= tasks.length) {
+				cb();
+				return;
+			}
+			
+			setTimeout(() => {
+				try {
+					tasks[i]();
+					this.executeTaskInSteps(tasks, i + 1, cb, errorcb);
+				} catch (ex) {
+					errorcb(ex);
+				}
+			}, 1);
 		},
 
-		generateLevelSkeletons: function (seed, worldVO, worldTemplateVO) {
-			WorldCreatorLogger.i("Step 2: Level skeletons", this.context);
-
-			LevelSkeletonGenerator.generate(seed, worldVO, worldTemplateVO);
-
-			WorldCreatorDebug.printLevelTemplates(worldVO);
+		discardWorld: function () {
+			WorldCreatorLogger.i("Discard world", this.context)
+			this.world.clear();
+			this.world = null;
 		},
 
-		generateLevelStructure: function (seed, worldVO, worldTemplateVO, levels) {
-			WorldCreatorLogger.i("Step 3: Level structure", this.context);
-
-			LevelStructureGenerator.generate(seed, worldVO, worldTemplateVO, levels);
-
-			WorldCreatorDebug.printLevelStructure(worldVO);
+		getPassageUp: function (level, sectorX, sectorY) {
+			var sectorVO = this.world.getLevel(level).getSector(sectorX, sectorY);
+			if (sectorVO.passageUpType) return sectorVO.passageUpType;
+			return null;
 		},
 
-		generateLevelFeatures: function (seed, worldVO, worldTemplateVO, levels) {
-			WorldCreatorLogger.i("Step 4: Level features", this.context);
-
-			LevelFeaturesGenerator.generate(seed, worldVO, worldTemplateVO, levels);
+		getPassageDown: function (level, sectorX, sectorY) {
+			var sectorVO = this.world.getLevel(level).getSector(sectorX, sectorY);
+			if (sectorVO.passageDownType) return sectorVO.passageDownType;
+			return null;
 		},
 
-		generateSectorFeatures: function (seed, worldVO, worldTemplateVO, levels, itemsHelper) {
-			WorldCreatorLogger.i("Step 5: Sector features", this.context);
-
-			SectorFeaturesGenerator.generate(seed, worldVO, worldTemplateVO, levels, itemsHelper);
-
-			//WorldCreatorDebug.printSectorTemplates(worldVO);
+		getSectorFeatures: function (level, sectorX, sectorY) {
+			var sectorVO = this.world.getLevel(level).getSector(sectorX, sectorY);
+			var sectorFeatures = {};
+			sectorFeatures.criticalPaths = sectorVO.criticalPathTypes || [];
+			sectorFeatures.zone = sectorVO.zone;
+			sectorFeatures.buildingDensity = sectorVO.buildingDensity;
+			sectorFeatures.wear = sectorVO.wear;
+			sectorFeatures.damage = sectorVO.damage;
+			sectorFeatures.sunlit = sectorVO.sunlit > 0;
+			sectorFeatures.ground = level == this.world.bottomLevel;
+			sectorFeatures.surface = level == this.world.topLevel;
+			sectorFeatures.hazards = sectorVO.hazards;
+			sectorFeatures.sectorType = sectorVO.sectorType;
+			sectorFeatures.hasSpring = sectorVO.hasSpring;
+			sectorFeatures.hasTradeConnectorSpot = sectorVO.hasTradeConnectorSpot;
+			sectorFeatures.resourcesScavengable = sectorVO.resourcesScavengable;
+			sectorFeatures.resourcesCollectable = sectorVO.resourcesCollectable;
+			sectorFeatures.itemsScavengeable = sectorVO.itemsScavengeable;
+			sectorFeatures.workshopResource = sectorVO.workshopResource;
+			sectorFeatures.hasWorkshop = sectorVO.hasWorkshop;
+			sectorFeatures.hasClearableWorkshop = sectorVO.hasClearableWorkshop;
+			sectorFeatures.hasBuildableWorkshop = sectorVO.hasBuildableWorkshop;
+			sectorFeatures.isCamp = sectorVO.isCamp;
+			sectorFeatures.isInvestigatable = sectorVO.isInvestigatable;
+			sectorFeatures.notCampableReason = sectorVO.notCampableReason;
+			sectorFeatures.stashes = sectorVO.stashes || null;
+			sectorFeatures.waymarks = sectorVO.waymarks || [];
+			sectorFeatures.heapResource = sectorVO.heapResource || null;
+			sectorFeatures.examineSpots = sectorVO.examineSpots || [];
+			sectorFeatures.graffiti = sectorVO.graffiti || null;
+			return sectorFeatures;
 		},
 
-		generateSectorContent: function (seed, worldVO, worldTemplateVO, levels, enemyCreator) {
-			WorldCreatorLogger.i("Step 6: Sector content", this.context);
-
-			SectorContentGenerator.generate(seed, worldVO, worldTemplateVO, levels, enemyCreator);
+		getLocales: function (level, sectorX, sectorY) {
+			return this.world.getLevel(level).getSector(sectorX, sectorY).locales;
 		},
 
-		resetInternalData: function (seed, worldVO) {
-			worldVO.resetInternalData();
+		getCriticalPaths: function (level, sectorX, sectorY) {
+			return this.world.getLevel(level).getSector(sectorX, sectorY).criticalPathTypes;
+		},
+
+		getSectorEnemies: function (level, sectorX, sectorY) {
+			return this.world.getLevel(level).getSector(sectorX, sectorY).possibleEnemies;
+		},
+
+		getHasSectorRegularEnemies: function (level, sectorX, sectorY) {
+			return this.world.getLevel(level).getSector(sectorX, sectorY).hasRegularEnemies;
+		},
+
+		getSectorLocaleEnemyCount: function (level, sectorX, sectorY) {
+			return this.world.getLevel(level).getSector(sectorX, sectorY).numLocaleEnemies;
 		},
 
 	};
