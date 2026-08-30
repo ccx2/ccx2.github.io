@@ -5245,7 +5245,7 @@ function hard_reset() {
 //update game time
 function update_timer(time_in_minutes) {
     const was_night = is_night(current_game_time);
-    current_game_time.goUp(time_in_minutes || (is_sleeping ? 6 : 1));
+    current_game_time.goUp(time_in_minutes || (is_sleeping ? 6 : 1 / tickrate));
 
     //update_character_stats(); //done every second, probably only used for day-night cycle at this point
     const daynight_change = was_night !== is_night(current_game_time);
