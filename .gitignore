@@ -6,3 +6,9 @@ Level13-063/img/open-iconic/*.db
 Level13-063/nbproject/private/
 Level13-063/nbproject
 *.bak
+YAIRPG-05530/node_modules
+YAIRPG-05530/package-lock.json
+YAIRPG-05530/package.json
+YAIRPG-05530/eslintrc.json
+YAIRPG-05530/dependency-cruiser.js
+YAIRPG-05530/dependency-graph.svg
