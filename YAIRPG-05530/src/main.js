@@ -5243,23 +5243,29 @@ function hard_reset() {
 }
 
 //update game time
+let minute_accumulator = 0;
+
 function update_timer(time_in_minutes) {
     const was_night = is_night(current_game_time);
-    current_game_time.goUp(time_in_minutes || (is_sleeping ? 6 : 1 / tickrate));
 
-    //update_character_stats(); //done every second, probably only used for day-night cycle at this point
+    if (time_in_minutes) {
+        current_game_time.goUp(time_in_minutes); // explicit calls (travel) stay untouched
+    } else if (is_sleeping) {
+        current_game_time.goUp(6);
+    } else {
+        minute_accumulator += 1 / tickrate;
+        if (minute_accumulator >= 1) {
+            const whole_minutes = Math.floor(minute_accumulator);
+            minute_accumulator -= whole_minutes;
+            current_game_time.goUp(whole_minutes);
+        }
+    }
+
     const daynight_change = was_night !== is_night(current_game_time);
     if(daynight_change) {
         update_character_stats();
     }
-    
     update_displayed_time();
-}
-
-function progress_time({value = 0, source}) {
-    update_timer(value);
-
-    update_effect_durations({time_in_minutes: value, is_sleep: is_sleeping, is_travel: source==="travel"});
 }
 
 /**
