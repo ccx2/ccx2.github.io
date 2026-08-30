@@ -5268,6 +5268,10 @@ function update_timer(time_in_minutes) {
     update_displayed_time();
 }
 
+function progress_time({value = 0, source}) {
+    update_timer(value);
+}
+
 /**
  * 
  * @param {Object} param0
