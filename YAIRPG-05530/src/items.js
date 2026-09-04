@@ -4723,7 +4723,7 @@ function add_gear() {
         description: "Tastes like bread",
         value: 40,
         effects: [{effect: "Well hydrated", duration: 60}],
-        recovery_chances: {"Glass bottle": 0.6},
+        recovery_chances: {"Glass bottle": 1},
         tags: {"drink": true},
     });
 
@@ -4791,7 +4791,7 @@ function add_gear() {
         description: "Tastes kinda nice and provides a quick burst of healing",
         value: 80,
         effects: [{effect: "Weak healing potion", duration: 10}],
-        recovery_chances: {"Glass phial": 0.75},
+        recovery_chances: {"Glass phial": 1},
         tags: {"medicine": true},
     });
     item_templates["Healing potion"] = new UsableItem({
@@ -4799,7 +4799,7 @@ function add_gear() {
         description: "Tastes nice at first but has a bitter aftertaste. Provides a quick burst of healing",
         value: 200,
         effects: [{effect: "Healing potion", duration: 10}],
-        recovery_chances: {"Glass phial": 0.75},
+        recovery_chances: {"Glass phial": 1},
         tags: {"medicine": true},
     });
     item_templates["Potion of sapping"] = new UsableItem({
@@ -4807,7 +4807,7 @@ function add_gear() {
         description: "A dark colored, bitter tasting potion, with no positive effects. Why would you even drink it?!",
         value: 50,
         effects: [{effect: "Potion of sapping", duration: 360}],
-        recovery_chances: {"Glass phial": 0.75},
+        recovery_chances: {"Glass phial": 1},
     });
     item_templates["Healing balm"] = new UsableItem({
         name: "Healing balm",
@@ -4879,7 +4879,7 @@ function add_gear() {
         value: 100,
         effects: [{ effect: "Simple seafood soup", duration: 120 },
                   { effect: "Hot meal", duration: 30 }],
-        recovery_chances: {"Glass bottle": 0.6},
+        recovery_chances: {"Glass bottle": 1},
         tags: {"food": true},
     });
     item_templates["Clam broth"] = new UsableItem({
@@ -4888,6 +4888,7 @@ function add_gear() {
         value: 100,
         effects: [{ effect: "Simple seafood soup", duration: 90 },
                   { effect: "Hot meal", duration: 30 }],
+        recovery_chances: {"Glass bottle": 1},
         tags: {"food": true},
     });
     item_templates["Alligator jerky"] = new UsableItem({
@@ -4917,6 +4918,7 @@ function add_gear() {
         value: 100,
         effects: [{ effect: "Simple seafood soup", duration: 120 },
                   { effect: "Hot meal", duration: 45 }],
+        recovery_chances: {"Glass bottle": 1},
         tags: {"food": true},
     });
     item_templates["Swampland skewer"] = new UsableItem({
