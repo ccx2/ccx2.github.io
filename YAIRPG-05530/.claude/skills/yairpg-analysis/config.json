@@ -1,0 +1,57 @@
+{
+  "_comment": "Mutable state for yairpg-analysis. Edit via the skill's commands, not by hand where a command exists.",
+
+  "station": {
+    "name": "Swampland tribe",
+    "tiers": {
+      "crafting": 2, "forging": 1, "smelting": 1,
+      "cooking": 2, "alchemy": 2, "butchering": 2, "woodworking": 2
+    },
+    "_updated": "2026-09-05",
+    "_note": "ASSUMPTION[A4]. Update with: run.js station <location name>. Tiers are re-read from src/locations.js when the name matches a location with a crafting block."
+  },
+
+  "anchors": [
+    {
+      "order": 1,
+      "id": "reduction-curve",
+      "kind": "items",
+      "recipe": "Willow bark",
+      "skill": "Woodworking",
+      "skill_level": 29,
+      "expected_xp": 21.6,
+      "tolerance": 0.15,
+      "note": "No quality tag, so no rarity term. recipe_level[1]=25 and 25 < 29 < 31, so the taper is ACTIVE but not floored - this isolates the XP reduction curve. Must pass before anchor 2 runs."
+    },
+    {
+      "order": 2,
+      "id": "rarity-multiplier",
+      "kind": "component",
+      "recipe": "Batrachian shoes",
+      "skill": "Crafting",
+      "skill_level": 27,
+      "result_tier": 4,
+      "material_count": 2,
+      "rarity": 1.1,
+      "expected_xp": 46.4,
+      "tolerance": 0.15,
+      "note": "Has a quality tag. Runs ONLY after anchor 1 passes, so the reduction curve is already known-good and any mismatch here isolates to the rarity term. Rarity is pinned at 1.1 (uncommon) rather than read from a live roll; the in-game display showed 46.4-54.9 across uncommon-rare at Crafting 27."
+    }
+  ],
+
+  "damage_anchor": {
+    "attack_power": null,
+    "recorded_at_hero_level": null,
+    "loadout": null,
+    "_note": "ASSUMPTION[A7]. Static derivation of attack_power walks race -> level -> equipment -> skills -> effects and is the most error-prone number this skill produces. Read 'Attack power' off the character sheet and record it with: run.js damage-anchor <value>. Until then OHK verdicts print as INDICATIVE, not verified."
+  },
+
+  "play_state": {
+    "one_hit_kill": true,
+    "travel_free_real_time": true,
+    "ignore_market_saturation": true,
+    "traders_as_material_source": false,
+    "glass_recycles": true,
+    "_note": "ASSUMPTION[A6]. User-stated play style, not derivable from save or source. one_hit_kill is CHECKED by the damage module when a damage anchor exists."
+  }
+}

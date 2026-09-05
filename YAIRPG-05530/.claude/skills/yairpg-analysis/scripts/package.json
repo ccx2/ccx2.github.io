@@ -1,0 +1,1 @@
+{ "type": "commonjs", "_comment": "Scopes this skill's scripts to CommonJS; the game package.json sets type=module." }
