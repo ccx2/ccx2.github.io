@@ -15,37 +15,17 @@ function save(cfg) { fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) 
  * comment, so `grep -rn "ASSUMPTION\[A3\]" scripts/` finds every site.
  * `run.js assumptions` prints this table.
  * ------------------------------------------------------------------ */
+/* A1 (XP multiplier formula), A2 (milestone scope) and A3 (Butchering ==
+ * beast-only) were dropped from this registry on 2026-09-05: A1 was
+ * live-verified against character.xp_bonuses in a running instance, and A2/
+ * A3 were settled as deliberate/confirmed facts for the current game version
+ * (v0.5.5.30) rather than left as open questions. Each still carries a plain
+ * code comment (no ASSUMPTION[Ax] tag) at its dependent site - see
+ * formulas.js (A1), milestones.js (A2), analysis.js/parse.js (A3). All three
+ * are version-specific, not universal - re-check them after a game_version
+ * bump rather than assuming they still hold. Ids are not reused/renumbered
+ * so old references stay meaningful. */
 const ASSUMPTIONS = {
-  A1: {
-    title: "XP multiplier formula",
-    risk: "high",
-    claim: "total_multiplier(skill) = named(skill) x all_skill x all x category(skill), " +
-           "with sources race / skills / books / levels, and a 1.03^hero_level term.",
-    why_unverified: "Reconstructed from memory + a read of character.js, never measured end to end. " +
-                    "character.xp_bonuses is runtime-only and absent from the save, so it cannot be " +
-                    "read back for comparison. A past session assumed x1 here and was ~30x wrong.",
-    how_to_settle: "Load the save in a browser, trigger one known XP gain, diff the skill's total_xp " +
-                   "in localStorage, and compare against the raw formula for that action.",
-    affects: "every time-to-level and time-to-milestone estimate (not the rankings)"
-  },
-  A2: {
-    title: "Milestone scope",
-    risk: "low",
-    claim: "'Milestones' means the `milestones` map on Skill objects only.",
-    why_unverified: "The game also has quest completions, location clear rewards and hero-level gates " +
-                    "that a player might reasonably call milestones. Excluded by choice, not by evidence.",
-    how_to_settle: "Ask whether quests / location rewards / hero levels should be folded in.",
-    affects: "milestone report completeness"
-  },
-  A3: {
-    title: "Butchering applies to `beast` only",
-    risk: "low",
-    claim: "The Butchering drop multiplier 2^(level/60) applies to enemies tagged `beast` and nothing else.",
-    why_unverified: "droprate_modifier_skills_for_tags maps only beast -> Butchering today. A future tag " +
-                    "(insect, aquatic) would silently change every drop-rate figure downstream.",
-    how_to_settle: "Re-read droprate_modifier_skills_for_tags in enemies.js; the parser reports it each run.",
-    affects: "all combat-drop costs, hence every crafting chain fed by drops"
-  },
   A4: {
     title: "Crafting station",
     risk: "low",
@@ -113,6 +93,22 @@ const MECHANIC_SOURCES = {
   "Stance mastery":    "Parent skill - accrues automatically from the individual stance skills."
 };
 
+/* ------------------------------------------------------------------ *
+ * BROKEN / NON-FUNCTIONAL ENEMIES
+ * Enemies that are wired into a location's enemies_list (so the parser
+ * can't tell them apart from a real, farmable enemy) but are confirmed
+ * non-functional in the live game via the developer's OWN source comment.
+ * There is no structural flag for this (unlike Challenge_zone, which has
+ * `is_challenge`) - each entry here was found by hand, so this list is a
+ * floor, not a guarantee that no other broken enemy exists uncaught.
+ * Combat-drop costs and combat-XP ranking must both skip these.
+ * ------------------------------------------------------------------ */
+const BROKEN_ENEMIES = {
+  "Enraged giant crab": "enemies.js:588, dev comment: 'not working at present, not sure where the problem is'. " +
+    "Its guaranteed (chance:1) Giant crab claw drop otherwise makes \"Crab trophy\" look ~60-100x cheaper than " +
+    "every real crafting recipe. Confirmed 2026-09-05."
+};
+
 /* Time. See memory: yairpg-tick-time-scaling / yairpg-time-conventions. */
 const TICKRATE = 10;                      // main.js:260
 const TICK_MIN_PER_REAL_MIN = 600;        // 10 ticks/real-sec x 60
@@ -124,6 +120,6 @@ const toRealMin = tickMin => tickMin / TICK_MIN_PER_REAL_MIN;
 const rateToReal = ratePerTickMin => ratePerTickMin * TICK_MIN_PER_REAL_MIN;
 
 module.exports = {
-  SKILL_DIR, CONFIG_PATH, load, save, ASSUMPTIONS, MECHANIC_SOURCES,
+  SKILL_DIR, CONFIG_PATH, load, save, ASSUMPTIONS, MECHANIC_SOURCES, BROKEN_ENEMIES,
   TICKRATE, TICK_MIN_PER_REAL_MIN, REAL_SEC_PER_TICK, toRealMin, rateToReal
 };

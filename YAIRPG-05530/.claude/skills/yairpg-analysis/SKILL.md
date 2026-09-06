@@ -17,7 +17,7 @@ node .claude/skills/yairpg-analysis/scripts/run.js full
 
 | Command | Does |
 |---|---|
-| `full` *(default)* | Best XP source per skill, grouped by the in-game skill categories, maxed skills omitted |
+| `full` *(default)* | Best XP method for every unmaxed skill at the character's current level & bonuses. Skills are grouped into sections purely for presentation - each unmaxed skill sits under its own skill-definition category (Activity, Crafting, Combat, etc., from `skills.js` `category`), never under save-specific or ad-hoc groupings |
 | `milestones` | Outstanding milestones, split into "unlocks content" and "stat bumps only" |
 | `skill <name>` | One skill: every source ranked, plus its own outstanding milestones |
 | `ohk [zone]` | Verifies the one-hit-kill premise per stance and flags attack-speed drag |
@@ -34,13 +34,25 @@ node .claude/skills/yairpg-analysis/scripts/run.js full
 means 12 real seconds. Every rate here is already converted; the `perTickMin` figure is
 available in the library if you need to compare against a tooltip.
 
-**The XP multiplier is applied separately.** The per-skill table shows raw rates; the
-header shows the multiplier. Milestone time estimates have it applied.
+**The XP multiplier is PER SKILL, never one number for everything.** A "named" bonus
+only applies to the skill it names; a category bonus only applies to skills sharing
+that category (the game stores those under a `category_`-prefixed key). This formula
+was live-verified 2026-09-05 against `character.xp_bonuses` in a running instance — see
+`scripts/lib/formulas.js` `deriveXpMultiplier`. The per-skill table shows the **final**
+rate (raw source rate × that skill's own multiplier), with the multiplier printed as a
+trailing `(x…)` so it stays auditable. Milestone and `skill <name>` estimates use the
+same per-skill multiplier.
 
 **`[not computed - static guidance]`** marks a skill the rate engine structurally cannot
-price — its XP comes from a combat event, a consumable or a trade rather than an
-activity. Those lines are hand-written notes, not derived numbers, and are labelled so
-they are never mistaken for one.
+price — its XP comes from a combat event it can't yet model (e.g. Fortitude, which
+scales with damage *taken*, not enemies fought) rather than an activity. Those lines are
+hand-written notes, not derived numbers, and are labelled so they are never mistaken for
+one. Gluttony, Medicine (use), and Haggling are **not** in this bucket — they're priced
+by chaining the consumable/sell formula onto the same gathering/crafting pipeline used
+for crafting XP, since supply (not the use/sell action) is what actually throttles them.
+
+**Location and activity labels are the player-facing text**, not the internal dict key
+(`locations.js` `starting_text`, e.g. "Mine the atratan vein", never `mining3`).
 
 ## The self-check gate
 
@@ -64,17 +76,33 @@ failure go away.
 
 ## Assumptions
 
-Seven unverified premises are registered in `scripts/lib/config.js`. Each has a stable
+Four unverified premises are registered in `scripts/lib/config.js`. Each has a stable
 id, and every dependent code site carries an `ASSUMPTION[Ax]` comment:
 
 ```bash
-grep -rn "ASSUMPTION\[A3\]" .claude/skills/yairpg-analysis/scripts/
+grep -rn "ASSUMPTION\[A5\]" .claude/skills/yairpg-analysis/scripts/
 node .claude/skills/yairpg-analysis/scripts/run.js assumptions
 ```
 
-The two high-risk ones are **A1** (the XP multiplier is reconstructed, not read —
-`character.xp_bonuses` is runtime-only and absent from the save) and **A7** (the damage
-model). Both affect time estimates rather than rankings.
+The highest-risk one left is **A7** (the damage model), which affects OHK/time
+estimates rather than rankings.
+
+Three premises that used to live here were promoted out of the registry after being
+settled for the current game version (**v0.5.5.30**) rather than left as open
+questions — each still carries a plain code comment (no `ASSUMPTION[Ax]` tag) at its
+dependent site so the reasoning stays visible:
+- **XP multiplier formula** — live-verified 2026-09-05 against `character.xp_bonuses`
+  in a running instance (`scripts/lib/formulas.js`).
+- **Milestone scope** — "milestone" deliberately means only the `milestones` map on a
+  Skill; a scope choice, not evidence, so it's a decision on record rather than a gap.
+- **Butchering applies to `beast` only** — read straight from
+  `droprate_modifier_skills_for_tags` in `enemies.js`, confirmed to have exactly one
+  entry today.
+
+All three are version-specific facts, not universal truths — a future game version
+could add a tag, change milestone semantics, or alter the XP formula, so re-check them
+(the same way they were originally settled) after a `game_version` bump rather than
+assuming they still hold.
 
 ## Damage and the one-hit-kill premise
 
@@ -105,3 +133,21 @@ changes.
   child's `total_xp` and are estimated that way.
 - `scripts/package.json` pins CommonJS, because the game's own `package.json` sets
   `type: module`.
+- Category XP bonuses live under a `"category_"+name` key (`character.js:298,336,913`),
+  never the bare category name. Looking up `bonuses["Combat"]` for a Combat-category
+  skill silently returns the *named* bonus for the skill literally called "Combat" and
+  misapplies it to the whole category — a past session did exactly this.
+  `hero_level` XP bonuses and skill XP bonuses read different `total_multiplier` keys
+  (`get_hero_xp_gain` vs `get_skill_xp_gain`, `character.js:903-924`); a bonus keyed
+  `"hero"` never speeds up skill training.
+- Stance-related-skill XP (`main.js:1587`) is the mean target `xp_value` with **no**
+  group-size multiplier — a genuinely different formula from Combat/weapon-skill XP
+  (`main.js:1788/1811`, which multiplies by `groupsize_xp_multiplier`). They only read
+  as the same number when a zone's group size is 1; don't "fix" an apparent mismatch by
+  making them share a formula, and don't introduce spurious rounding into the shared
+  case either (reuse the unrounded mean, not a display-rounded copy of it).
+- The `"recycled at 100% on use"` synthetic cost (`ASSUMPTION[A6]`, glass containers)
+  prices an item as free **as a crafting input you already hold** — it is not a
+  production rate. Anything that ranks items by real-world acquisition speed (the
+  consumable/sell pipelines) must exclude it, or a recyclable container looks like it
+  can be produced infinitely fast.

@@ -10,6 +10,15 @@
  * default-curve skill by ~10 levels.                                       */
 const totalXpToReach = (d, L) => d.base * (1 - Math.pow(d.scaling, L)) / (1 - d.scaling);
 
+/** skills.js `names` map: pick the highest level-threshold name the character
+ *  has reached. Falls back to the object's dict-key id if `names` is empty. */
+function skillDisplayName(def, level) {
+  const thresholds = Object.keys(def.names || {}).map(Number).sort((a, b) => a - b);
+  let name = def.id;
+  for (const t of thresholds) if (level >= t) name = def.names[t];
+  return name;
+}
+
 function levelFromXp(d, xp) {
   let L = 0;
   while (L < d.max && totalXpToReach(d, L + 1) <= xp) L++;
@@ -129,27 +138,51 @@ const componentValue = ({ matValue, tier, count }) =>
   (matValue ? Math.round(matValue * count) : Math.round(tier * 35 * count)) + 10;
 
 /* ---- XP multiplier ---------------------------------------------------- *
- * ASSUMPTION[A1] - HIGH RISK. character.xp_bonuses is runtime-only and is
- * NOT in the save, so this is reconstructed, not read. Never default to 1:
- * a past session did and was ~30x wrong. See memory yairpg-xp-multiplier-trap.
+ * character.xp_bonuses is runtime-only and is NOT in the save, so this is
+ * reconstructed, not read. Never default to 1: a past session did and was
+ * ~30x wrong. See memory yairpg-xp-multiplier-trap. VERIFIED LIVE 2026-09-05
+ * against character.xp_bonuses for v0.5.5.30 (loaded the save in a running
+ * instance, exposed xp_bonuses via a window hook, diffed key-for-key) -
+ * re-verify the same way after any skills.js/items.js edit.
+ *
+ * PER-SKILL, not global: character.js:903-916 get_skill_xp_gain(skill) =
+ *   total_multiplier[skill_name] * total_multiplier.all_skill
+ *   * total_multiplier.all * total_multiplier["category_"+category]
+ * Two traps this must not repeat:
+ *  1. The hero-level XP gain (get_hero_xp_gain, character.js:923) and the
+ *     SKILL xp gain (get_skill_xp_gain) read DIFFERENT total_multiplier keys
+ *     ("hero" vs the skill's own name / category). A skill is never boosted
+ *     by a race/milestone "hero" bonus - that only speeds up hero leveling.
+ *  2. Category bonuses are stored under a "category_"+name KEY
+ *     (character.js:298,336,565,913), not the bare category name - looking
+ *     up bonuses["Combat"] silently returns the SKILL-named bonus for the
+ *     skill literally called "Combat" and applies it to every skill in that
+ *     category, while the real "category_Combat" bonus is never read.
+ *
+ * The `heroLevel` pow(1.03, L) term below is NOT the "hero" bucket above -
+ * it reconstructs character.js:217-243 get_level_bonus(), which multiplies
+ * xp_bonuses.multiplier.levels.all_skill by 1.03 once per hero level gained.
+ * That folds into all_skill for every skill uniformly; grouping it as a
+ * separate factor here is mathematically identical (multiplication commutes)
+ * as long as it is never applied a second time via a "hero"-named bonus.
  * ------------------------------------------------------------------ */
 function deriveXpMultiplier({ heroLevel, skillId, category, bonuses = {} }) {
-  const hero = Math.pow(1.03, heroLevel || 0);          // ASSUMPTION[A1]
+  const levelScaling = Math.pow(1.03, heroLevel || 0);  // folds into all_skill, see above
   const named = bonuses[skillId] || 1;
   const allSkill = bonuses.all_skill || 1;
   const all = bonuses.all || 1;
-  const cat = (category && bonuses[category]) || 1;
+  const cat = (category && bonuses["category_" + category]) || 1;
   return {
-    value: hero * named * allSkill * all * cat,
-    parts: { hero, named, all_skill: allSkill, all, category: cat },
-    confidence: "derived - ASSUMPTION[A1], verify by live measurement before trusting any time estimate"
+    value: levelScaling * named * allSkill * all * cat,
+    parts: { hero: levelScaling, named, all_skill: allSkill, all, category: cat },
+    confidence: "derived - verified live 2026-09-05, still excludes active_effects (temporary buffs)"
   };
 }
 
 function round1(x) { return Math.round(10 * x) / 10; }
 
 module.exports = {
-  totalXpToReach, levelFromXp, xpToNextLevel,
+  totalXpToReach, levelFromXp, xpToNextLevel, skillDisplayName,
   rarityOf, qualityRange,
   xpItems, xpComponent, xpAssembly, componentDiesAt, itemsDiesAt,
   slerp, skillModifier, gatheringCycle,

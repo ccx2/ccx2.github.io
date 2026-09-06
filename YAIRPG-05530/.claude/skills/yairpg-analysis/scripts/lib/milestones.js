@@ -2,17 +2,20 @@
 const F = require("./formulas");
 
 /* ------------------------------------------------------------------ *
- * ASSUMPTION[A2]: "milestone" here means the `milestones` map on a Skill
- * (skills.js). The game also has quest completions, location clear
- * rewards and hero-level gates that a player might reasonably call
- * milestones; those are deliberately out of scope.
+ * "Milestone" here means the `milestones` map on a Skill (skills.js) only,
+ * by deliberate scope choice, confirmed for v0.5.5.30. The game also has
+ * quest completions, location clear rewards and hero-level gates that a
+ * player might reasonably call milestones; those stay out of scope unless
+ * asked for. Revisit this scope choice on a game version bump.
  * ------------------------------------------------------------------ */
 
 /**
  * @param bestRates {skillId: xpPerRealMin} - optional; enables time estimates.
- * @param xpMultiplier applied to rates. ASSUMPTION[A1] - provisional.
+ * @param xpMultiplierFor (skillId, category) -> multiplier. The multiplier is
+ *   PER SKILL (named + category bonuses differ), never a single flat number.
+ *   Verified live against character.xp_bonuses 2026-09-05.
  */
-function findMilestones(character, { bestRates = {}, xpMultiplier = 1 } = {}) {
+function findMilestones(character, { bestRates = {}, xpMultiplierFor = () => 1 } = {}) {
   const achieved = [], pending = [];
 
   for (const sk of Object.values(character.skills)) {
@@ -34,6 +37,7 @@ function findMilestones(character, { bestRates = {}, xpMultiplier = 1 } = {}) {
 
       const rate = bestRates[sk.id];
       if (rate && rate > 0) {
+        const xpMultiplier = xpMultiplierFor(sk.id, sk.def.category);
         const effective = rate * xpMultiplier;
         row.realMinutes = row.xpRemaining / effective;
         row.realHours = row.realMinutes / 60;

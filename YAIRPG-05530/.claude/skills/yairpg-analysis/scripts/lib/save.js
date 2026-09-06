@@ -103,12 +103,15 @@ function buildCharacter(saveData, skillDefs) {
     equipmentSkillBonuses: bonuses,
     stances: saveData.stances || {},
     currentStance: saveData.current_stance || null,
+    /* main.js:3865-3877: a book's PERMANENT bonuses apply once is_finished is
+       true, regardless of accumulated_time beyond that. */
+    finishedBooks: Object.keys(saveData.books || {}).filter(b => saveData.books[b].is_finished),
     categoryOrder: saveData.skill_category_order || [],
     gameTime: saveData["current time"] || null,
     playtimeSec: saveData.total_playtime || 0,
     kills: saveData.total_kills || 0,
-    /* ASSUMPTION[A1]: character.xp_bonuses is runtime-only and absent here.
-       An empty object is NOT evidence of multiplier 1. */
+    /* character.xp_bonuses is runtime-only and absent here. An empty object
+       is NOT evidence of multiplier 1 - reconstruct it, don't default it. */
     xpBonusesPresent: !!(saveData.character && saveData.character.xp_bonuses)
   };
 }

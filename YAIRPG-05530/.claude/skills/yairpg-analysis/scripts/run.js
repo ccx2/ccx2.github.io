@@ -19,6 +19,17 @@ const n3 = x => (x == null ? "-" : (Math.round(x * 1000) / 1000).toLocaleString(
 const pad = (s, w) => String(s == null ? "" : s).padEnd(w);
 const hr = (c = "-") => console.log(c.repeat(78));
 
+/* Skills.js `names` renames a skill as it levels (e.g. "Strength of mind" ->
+   "Iron will" at 15) and the object KEY this tool indexes everything by is
+   not always the level-0 name - some skills key on their TOP-tier name
+   instead, so a mid-level character shows a lower name than the key implies
+   (verified live: at level 22 "Iron skin" is still displayed "Stone skin").
+   Show "current name (key)" whenever they differ so both stay traceable. */
+function dispName(s) {
+  const live = F.skillDisplayName(s.def, s.level);
+  return live === s.id ? s.id : `${live} (${s.id})`;
+}
+
 /* ---------------- bootstrap ---------------- */
 function boot({ requireGate = true } = {}) {
   const cfg = CFG.load();
@@ -67,12 +78,24 @@ function printSaveHeader(found, character) {
     `kills ${character.kills.toLocaleString("en-US")}`);
 }
 
-/* ASSUMPTION[A1]: reconstructed, never read - character.xp_bonuses is
+/* Reconstructed, never read - character.xp_bonuses is
    runtime-only. Folds in xp_multipliers from milestones the character has
-   ALREADY reached, which is where most of the real multiplier lives (a past
-   session used the hero term alone and was ~10x low). Book-granted
-   multipliers are NOT yet modelled - see the caveat printed alongside. */
-function xpMultiplier(character) {
+   ALREADY reached (most of the multiplier lives here) AND from every
+   FINISHED book in the save (main.js:3865-3877 - a book's bonus is
+   permanent once is_finished, and unlike milestones it is NOT derivable
+   from skill levels at all, only from save_data.books). Verified live
+   (2026-09-05): reconstructed "skills" bucket matched
+   character.xp_bonuses.multiplier.skills key-for-key once books were
+   excluded; the ONLY remaining, deliberately-unmodeled source is
+   `active_effects` - temporary buffs that expire, which a steady-state
+   rate analysis should not chase anyway.
+
+   The multiplier is PER SKILL, not one global number: a "named" bonus only
+   applies to the skill it names, and a category bonus only applies to
+   skills in that category (via the "category_"+name key - see formulas.js).
+   This returns the raw bonus map plus a .forSkill(id, category) helper;
+   callers must NEVER apply a single multiplier value to every skill. */
+function xpMultiplierContext(character, game) {
   const bonuses = {};
   let milestoneSources = 0;
   for (const sk of Object.values(character.skills)) {
@@ -80,18 +103,33 @@ function xpMultiplier(character) {
       if (sk.level < Number(lvlStr)) continue;
       for (const g of grants) {
         if (g.kind !== "xp_multipliers") continue;
-        for (const p of g.detail.matchAll(/([\w]+)\s*:\s*([\d.]+)/g)) {
+        /* Multi-word skill names MUST be quoted in the source ("Night vision":
+           1.2, "Shield blocking": 1.1) - a key-pattern of \w+ alone can't span
+           the space and silently drops the whole grant. Match an optional
+           leading quote and an internal-space-tolerant key instead. */
+        for (const p of g.detail.matchAll(/"?([\w][\w ]*?)"?\s*:\s*([\d.]+)/g)) {
           bonuses[p[1]] = (bonuses[p[1]] || 1) * Number(p[2]);
           milestoneSources++;
         }
       }
     }
   }
-  const m = F.deriveXpMultiplier({ heroLevel: character.heroLevel, skillId: null, category: null, bonuses });
-  m.milestoneSources = milestoneSources;
-  m.bonuses = bonuses;
-  m.caveat = "book-granted multipliers not modelled; measure live to settle";
-  return m;
+  let bookSources = 0;
+  for (const bookId of character.finishedBooks || []) {
+    const book = game.books[bookId];
+    if (!book) continue;
+    for (const [key, v] of Object.entries(book.xpMultipliers)) {
+      bonuses[key] = (bonuses[key] || 1) * v;
+      bookSources++;
+    }
+  }
+  const caveat = "active-effect (temporary buff) multipliers not modelled - they expire, so a steady-state rate should exclude them";
+  return {
+    bonuses, milestoneSources, bookSources, heroLevel: character.heroLevel, caveat,
+    forSkill(skillId, category) {
+      return F.deriveXpMultiplier({ heroLevel: character.heroLevel, skillId, category, bonuses });
+    }
+  };
 }
 
 /* ---------------- best source per skill ---------------- */
@@ -113,26 +151,46 @@ function bestSources(game, character, cfg) {
     if (!best[skill] || perRealMin > best[skill].perRealMin) best[skill] = { perRealMin, label, kind };
   };
 
-  for (const r of acts.training) offer(r.skill, r.perRealMin, `${r.location} - ${r.key}`, "training");
-  for (const r of acts.gathering) offer(r.skill, r.perRealMin, `${r.location} - ${r.key}`, "gathering");
+  for (const r of acts.training) offer(r.skill, r.perRealMin, `${r.location} - ${r.display}`, "training");
+  for (const r of acts.gathering) offer(r.skill, r.perRealMin, `${r.location} - ${r.display}`, "gathering");
   for (const r of types) offer(r.skill, r.perRealMin, `${r.zone} (${r.type} st.${r.stage})`, "passive");
   for (const r of craft.rows) for (const [sk, v] of Object.entries(r.xp)) {
     if (v > 0) offer(sk, (v / r.realMinutes), `craft ${r.product}`, "crafting");
   }
+
+  // Gluttony / Medicine(use) / Haggling: supply-throttled by the same
+  // gathering/crafting chain used for crafting XP above (see analysis.js).
+  const food = A.consumableRates(game, costs, craft.rows, "food");
+  if (food[0]) offer("Gluttony", food[0].perRealMin, `eat ${food[0].item}`, "consumable");
+  const medicine = A.consumableRates(game, costs, craft.rows, "medicine");
+  if (medicine[0]) offer("Medicine", medicine[0].perRealMin, `use ${medicine[0].item}`, "consumable");
+  // Medicine also earns half of any medicine-tagged item's own craft XP
+  // (main.js:2798-2801); that's already folded into craft.rows above.
+  const sellable = A.sellRates(game, costs, craft.rows);
+  if (sellable[0]) offer("Haggling", sellable[0].perRealMin, `sell ${sellable[0].item}`, "trade");
+
   const live = combat.filter(c => !c.challenge);
   const topCombat = live[0];
   if (topCombat) {
-    for (const sk of ["Combat", "Evasion", "Iron skin", "Fortitude", "Shield blocking", "Unarmed"])
+    // Fortitude is NOT trained by fighting in a zone - it scales with
+    // damage_taken^0.6 PER HIT LANDED ON YOU (main.js:1746), so it is
+    // deliberately excluded here and left to MECHANIC_SOURCES below.
+    for (const sk of ["Combat", "Evasion", "Iron skin", "Shield blocking", "Unarmed"])
       offer(sk, topCombat.perRealMin, topCombat.zone, "combat");
     // Weapon skills: same swing, gated on having that weapon type equipped.
     for (const sk of ["Swords", "Axes", "Spears", "Hammers", "Daggers", "Wands", "Staffs"]) {
       offer(sk, topCombat.perRealMin, `${topCombat.zone} with a ${sk.replace(/s$/, "").toLowerCase()} equipped`, "combat");
     }
-    // Stance skills use the MEAN target xp_value with no group-size bonus.
+    // Stance skills (main.js:1587) get mean target xp_value with NO
+    // group-size bonus - a genuinely different formula from Combat/weapon
+    // (main.js:1788/1811, which multiply by groupsize_xp_multiplier). Reuse
+    // the SAME unrounded meanXp and throttle as topCombat so that when the
+    // zone's group size is 1 (groupsize_xp_multiplier = 1) the two numbers
+    // come out identical rather than differing by display rounding.
     for (const st of Object.values(D.parseStances(ROOT))) {
       if (!st.relatedSkill) continue;
       const unlocked = character.stances && character.stances[st.id] === true;
-      offer(st.relatedSkill, A.both(topCombat.meanXpValue).perRealMin,
+      offer(st.relatedSkill, A.both(topCombat.meanXpRaw * topCombat.throttle).perRealMin,
         `${topCombat.zone} in ${st.name}` + (unlocked ? "" : "  [STANCE NOT UNLOCKED]"), "stance");
     }
     for (const c of live) {
@@ -140,18 +198,21 @@ function bestSources(game, character, cfg) {
       if (c.sizes.includes("large")) offer("Giant slayer", c.perRealMin, c.zone, "combat");
     }
   }
-  return { best, combat, craft, costs, acts, types, butchering };
+  return { best, combat, craft, costs, acts, types, butchering, food, medicine, sellable };
 }
 
 /* ---------------- modes ---------------- */
 function modeFull() {
   const { cfg, game, character, found } = boot();
   printSaveHeader(found, character);
-  const mult = xpMultiplier(character);
-  console.log(`XPMUL  x${n3(mult.value)}  from hero x${n3(mult.parts.hero)} and ` +
-    `${mult.milestoneSources} achieved milestone multiplier(s) ${JSON.stringify(mult.bonuses)}`);
-  console.log(`       [ASSUMPTION[A1] - ${mult.caveat}]`);
-  console.log(`DROPS  Butchering tag map: ${JSON.stringify(game.dropMap)}  [ASSUMPTION[A3]]`);
+  const mult = xpMultiplierContext(character, game);
+  console.log(`XPMUL  level-derived scaling x${n3(Math.pow(1.03, mult.heroLevel))} (folds into all_skill), ` +
+    `${mult.milestoneSources} achieved milestone bonus(es), ${mult.bookSources} finished-book bonus(es):`);
+  console.log(`       ${JSON.stringify(mult.bonuses)}`);
+  console.log(`       [verified live 2026-09-05 - ${mult.caveat}]`);
+  console.log(`       The FINAL multiplier differs PER SKILL (named x all_skill x all x its own category) - ` +
+    `see the x-suffix on each rate below, not one number for everything.`);
+  console.log(`DROPS  Butchering tag map: ${JSON.stringify(game.dropMap)}  (beast-only, confirmed v0.5.5.30)`);
   console.log(`STATION ${cfg.station.name}  ${JSON.stringify(cfg.station.tiers)}  [ASSUMPTION[A4]]`);
   hr("=");
 
@@ -161,22 +222,26 @@ function modeFull() {
   for (const sk of Object.values(character.skills)) (byCat[sk.def.category] = byCat[sk.def.category] || []).push(sk);
   const cats = [...order.filter(c => byCat[c]), ...Object.keys(byCat).filter(c => !order.includes(c))];
 
-  console.log("BEST XP SOURCE PER SKILL   (rates are XP per REAL minute, before the x" +
-    n3(mult.value) + " multiplier)\n");
+  console.log("BEST XP SOURCE PER SKILL   (rates are FINAL XP per REAL minute - the raw source rate x " +
+    "that skill's own multiplier, shown as the trailing x-value)\n");
+  const finalBest = {};
   for (const cat of cats) {
     const rows = byCat[cat].filter(s => !s.maxed).sort((a, b) => b.level - a.level);
     if (!rows.length) continue;
     console.log(`== ${cat} ==`);
     for (const s of rows) {
       const b = best[s.id];
+      const m = mult.forSkill(s.id, s.def.category);
       const mech = CFG.MECHANIC_SOURCES[s.id];
       const shown = b ? `${b.label} [${b.kind}]`
         : mech ? `${mech}  [not computed - static guidance]`
         : "no source found - may be trained by a mechanic the rate engine does not model";
-      console.log("   " + pad(s.id, 22) + pad(s.level + "/" + s.def.max, 9) +
-        pad(b ? n1(b.perRealMin) : "-", 12) + shown);
+      const rate = b ? n1(b.perRealMin * m.value) + " (x" + n3(m.value) + ")" : "-";
+      if (b) finalBest[s.id] = { perRealMin: b.perRealMin * m.value, label: b.label, kind: b.kind };
+      console.log("   " + pad(dispName(s), 30) + pad(s.level + "/" + s.def.max, 9) +
+        pad(rate, 22) + shown);
     }
-    const maxed = byCat[cat].filter(s => s.maxed).map(s => s.id);
+    const maxed = byCat[cat].filter(s => s.maxed).map(dispName);
     if (maxed.length) console.log(`   (maxed, omitted: ${maxed.join(", ")})`);
     console.log("");
   }
@@ -185,27 +250,30 @@ function modeFull() {
     console.log(`ASSUMPTION[A5] unresolved chain inputs (${craft.unresolved.length}): ` +
       craft.unresolved.slice(0, 12).join(", ") + (craft.unresolved.length > 12 ? " ..." : ""));
   }
-  writeLastRun(character, best);
+  writeLastRun(character, finalBest);
 }
 
 function modeMilestones() {
   const { cfg, game, character, found } = boot();
   printSaveHeader(found, character);
-  const mult = xpMultiplier(character);
+  const mult = xpMultiplierContext(character, game);
   const { best } = bestSources(game, character, cfg);
   const rates = {}; for (const [k, v] of Object.entries(best)) rates[k] = v.perRealMin;
-  const ms = M.findMilestones(character, { bestRates: rates, xpMultiplier: mult.value });
+  const ms = M.findMilestones(character, {
+    bestRates: rates,
+    xpMultiplierFor: (skillId, category) => mult.forSkill(skillId, category).value
+  });
   hr("=");
   console.log(`MILESTONES   ${ms.counts.achieved} achieved, ${ms.counts.pending} outstanding` +
-    `   [ASSUMPTION[A2]: skill milestones only]`);
-  console.log(`Times assume the best source above and x${n3(mult.value)} XP multiplier ` +
-    `(ASSUMPTION[A1] - provisional).\n`);
+    `   (skill milestones only, by scope choice - see SKILL.md)`);
+  console.log(`Times assume the best source above and each skill's OWN xp multiplier ` +
+    `(named x all_skill x all x category - verified live 2026-09-05).\n`);
 
   const show = (title, rows) => {
     console.log(`-- ${title} --`);
     if (!rows.length) { console.log("   (none)\n"); return; }
     for (const r of rows.slice(0, 20)) {
-      console.log("   " + pad(r.skill + " " + r.level, 26) +
+      console.log("   " + pad(dispName(character.skills[r.skill]) + " " + r.level, 30) +
         pad("+" + r.levelsAway + " lvl", 9) +
         pad(n1(r.xpRemaining) + " xp", 16) +
         pad(r.realHours != null ? n1(r.realHours) + " real h" : "no rate", 14) +
@@ -226,24 +294,33 @@ function modeSkill(name) {
     process.exit(1);
   }
   printSaveHeader(found, character);
+  const mult = xpMultiplierContext(character, game);
+  const m = mult.forSkill(sk.id, sk.def.category);
   hr("=");
-  console.log(`${sk.id}   level ${sk.level}/${sk.def.max}` +
+  console.log(`${dispName(sk)}   level ${sk.level}/${sk.def.max}` +
     (sk.bonus ? `  (+${sk.bonus} from equipment -> effective ${sk.effective})` : "") +
     `\n  category ${sk.def.category}   curve base ${sk.def.base} scaling ${sk.def.scaling}` +
-    `\n  total_xp ${n1(sk.totalXp)}` + (sk.xpToNext != null ? `   to next level ${n1(sk.xpToNext)}` : "   MAXED"));
+    `\n  total_xp ${n1(sk.totalXp)}` + (sk.xpToNext != null ? `   to next level ${n1(sk.xpToNext)}` : "   MAXED") +
+    `\n  xp multiplier x${n3(m.value)}  (named x${n3(m.parts.named)} * all_skill x${n3(m.parts.all_skill)} * ` +
+    `all x${n3(m.parts.all)} * category x${n3(m.parts.category)})`);
 
-  const { best, combat, craft, acts, types } = bestSources(game, character, cfg);
-  console.log("\nSOURCES (XP per real minute)");
+  const { combat, craft, acts, types, food, medicine, sellable } = bestSources(game, character, cfg);
+  console.log("\nSOURCES (FINAL XP per real minute, this skill's own multiplier already applied)");
   const rows = [];
-  for (const r of acts.training) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.key}`, "training"]);
-  for (const r of acts.gathering) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.key} (cycle ${r.cycleTickMinutes} tick-min)`, "gathering"]);
+  for (const r of acts.training) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.display}`, "training"]);
+  for (const r of acts.gathering) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.display} (cycle ${r.cycleTickMinutes} tick-min)`, "gathering"]);
   for (const r of types) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.zone} (${r.type} st.${r.stage})`, "passive"]);
   for (const r of craft.rows) if (r.xp[sk.id] > 0) rows.push([r.xp[sk.id] / r.realMinutes, `craft ${r.product} (${n1(r.realMinutes)} real min/unit)`, "crafting"]);
-  if (["Combat", "Evasion", "Iron skin", "Fortitude", "Shield blocking", "Unarmed", "Pest killer", "Giant slayer"].includes(sk.id))
+  if (["Combat", "Evasion", "Iron skin", "Shield blocking", "Unarmed", "Pest killer", "Giant slayer"].includes(sk.id))
     for (const c of combat.slice(0, 5)) rows.push([c.perRealMin, `${c.zone} (${c.enemies.join("/")})`, "combat"]);
+  if (sk.id === "Gluttony") for (const f of food.slice(0, 8)) rows.push([f.perRealMin, `eat ${f.item} (${n1(f.realMinutes)} real min/unit)`, "consumable"]);
+  if (sk.id === "Medicine") for (const u of medicine.slice(0, 8)) rows.push([u.perRealMin, `use ${u.item} (${n1(u.realMinutes)} real min/unit)`, "consumable"]);
+  if (sk.id === "Haggling") for (const t of sellable.slice(0, 8)) rows.push([t.perRealMin, `sell ${t.item} (${n1(t.realMinutes)} real min/unit)`, "trade"]);
   rows.sort((a, b) => b[0] - a[0]);
-  for (const [v, label, kind] of rows.slice(0, 15)) console.log("   " + pad(n1(v), 12) + pad(kind, 11) + label);
-  if (!rows.length) console.log("   no computed source - this skill may be trained by a mechanic outside the rate engine");
+  for (const [v, label, kind] of rows.slice(0, 15)) console.log("   " + pad(n1(v * m.value), 12) + pad(kind, 11) + label);
+  const mech = CFG.MECHANIC_SOURCES[sk.id];
+  if (!rows.length && mech) console.log(`   ${mech}  [not computed - static guidance]`);
+  else if (!rows.length) console.log("   no computed source - this skill may be trained by a mechanic outside the rate engine");
 
   const msAll = sk.def.milestones || {};
   const pend = Object.keys(msAll).map(Number).filter(l => l > sk.level).sort((a, b) => a - b);
@@ -387,23 +464,34 @@ function modeDiff() {
   const prev = JSON.parse(fs.readFileSync(LAST_RUN, "utf8"));
   const { cfg, game, character, found } = boot();
   printSaveHeader(found, character);
+  const mult = xpMultiplierContext(character, game);
   const { best } = bestSources(game, character, cfg);
+  // Compare FINAL (post-multiplier) rates - .last-run.json stores final
+  // rates too (see writeLastRun call sites), so a multiplier change from a
+  // newly-achieved milestone shows up here same as a raw-rate change would.
+  const finalBest = {};
+  for (const [skill, b] of Object.entries(best)) {
+    const sk = character.skills[skill];
+    const m = sk ? mult.forSkill(skill, sk.def.category).value : 1;
+    finalBest[skill] = { perRealMin: b.perRealMin * m, label: b.label, kind: b.kind };
+  }
   hr("=");
   console.log(`CHANGES since ${prev.at}\n`);
   if (prev.heroLevel !== character.heroLevel) console.log(`   hero level ${prev.heroLevel} -> ${character.heroLevel}`);
   let any = false;
   for (const s of Object.values(character.skills)) {
     const before = prev.levels[s.id];
-    if (before != null && before !== s.level) { console.log("   " + pad(s.id, 24) + `${before} -> ${s.level}`); any = true; }
+    if (before != null && before !== s.level) { console.log("   " + pad(dispName(s), 30) + `${before} -> ${s.level}`); any = true; }
   }
   if (!any) console.log("   no skill levels changed");
   console.log("");
-  for (const [skill, b] of Object.entries(best)) {
+  for (const [skill, b] of Object.entries(finalBest)) {
     const before = prev.best[skill];
     if (before != null && Math.abs(before - b.perRealMin) / Math.max(before, 1e-9) > 0.05)
-      console.log("   rate " + pad(skill, 22) + `${n1(before)} -> ${n1(b.perRealMin)} /real min   (${b.label})`);
+      console.log("   rate " + pad(character.skills[skill] ? dispName(character.skills[skill]) : skill, 30) +
+        `${n1(before)} -> ${n1(b.perRealMin)} /real min   (${b.label})`);
   }
-  writeLastRun(character, best);
+  writeLastRun(character, finalBest);
 }
 
 /* ---------------- dispatch ---------------- */

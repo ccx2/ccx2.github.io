@@ -56,7 +56,15 @@ function parseSkills(root) {
     const milestones = {};
     const ms = balancedAfter(body, "milestones:");
     if (ms) {
-      const lre = /(?:^|\n)\s{0,40}(\d+)\s*:\s*\{/g;
+      /* Unbounded leading whitespace: skills.js indents milestone level keys
+         inconsistently (some skills past 40 spaces deep), and a capped
+         \s{0,40} silently drops every level marker past that depth - not a
+         parse error, just an empty milestones map for that skill. 19 of 259
+         level markers in the live file sit past 40 spaces (verified by
+         scanning the raw source), which was quietly erasing real xp_multiplier
+         grants (e.g. all of Spatial awareness's and Tight maneuvers') from
+         the multiplier reconstruction. */
+      const lre = /(?:^|\n)[ \t]*(\d+)\s*:\s*\{/g;
       const levels = []; let lm;
       while ((lm = lre.exec(ms.body))) levels.push({ lvl: Number(lm[1]), at: lm.index });
       for (let j = 0; j < levels.length; j++) {
@@ -75,10 +83,24 @@ function parseSkills(root) {
           }
         }
         const xpm = seg.match(/xp_multipliers:\s*\{([^}]*)\}/);
-        if (xpm) grants.push({ kind: "xp_multipliers", detail: xpm[1].replace(/\s+/g, " ").trim() });
+        /* strip() only removes FULL-LINE `//` comments; a handful of grants
+           carry a trailing inline comment (e.g. "...Perception: 1.1, //note")
+           that survives into this text and must not leak into `detail`. */
+        if (xpm) grants.push({ kind: "xp_multipliers", detail: xpm[1].replace(/\/\/[^\n]*/g, "").replace(/\s+/g, " ").trim() });
         milestones[levels[j].lvl] = grants;
       }
     }
+
+    /* Skills.js `names: {0: "...", 15: "...", ...}` renames the skill as it
+       levels (e.g. "Strength of mind" -> "Iron will" at 15 -> "Heart of
+       steel" at 30). The object KEY used throughout this tool (and the
+       save) is fixed and is NOT necessarily the level-0 name - some skills
+       key on their top-tier name instead (Iron skin, Weapon mastery), so a
+       mid-tier character shows a lower in-game name than the key suggests.
+       Always resolve the display name from `names` at read-clase level. */
+    const namesBlock = (beforeMilestones.match(/names:\s*\{([^}]*)\}/) || [])[1];
+    const names = {};
+    if (namesBlock) for (const p of namesBlock.matchAll(/(\d+)\s*:\s*"([^"]+)"/g)) names[Number(p[1])] = p[2];
 
     out[marks[i].name] = {
       id: marks[i].name,
@@ -88,6 +110,7 @@ function parseSkills(root) {
       coefficient: num("max_level_coefficient") ?? 1,
       category: cat || "(uncategorised)",
       parent: (body.match(/parent_skill:\s*"([^"]+)"/) || [])[1] || null,
+      names,
       milestones
     };
   }
@@ -118,7 +141,8 @@ function parseEnemies(root) {
       loot
     };
   }
-  // ASSUMPTION[A3]: report the live tag->skill drop mapping so a new tag is visible.
+  // Report the live tag->skill drop mapping so a new tag added in a future
+  // game version is visible (beast-only confirmed for v0.5.5.30).
   const dropMap = {};
   const dm = src.match(/droprate_modifier_skills_for_tags\s*=\s*\{([^}]*)\}/);
   if (dm) for (const p of dm[1].matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) dropMap[p[1]] = p[2];
@@ -182,6 +206,9 @@ function parseLocations(root) {
         const sr = body.match(/skill_required:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]/);
         activities.push({
           location: m[1], key: marks[i].key,
+          /* starting_text is the player-facing label ("Mine the atratan vein"); the
+             dict key (e.g. "mining3") is an internal id and should never be shown. */
+          display: (body.match(/starting_text:\s*"([^"]+)"/) || [])[1] || marks[i].key,
           activity: (body.match(/activity_name:\s*"([^"]+)"/) || [])[1],
           gathering: marks[i].cls === "LocationGatheringActivity",
           xpPerTick: Number((body.match(/skill_xp_per_tick:\s*([\d.]+)/) || [])[1] || 1),
@@ -251,6 +278,29 @@ function parseItems(root) {
       recovery: [...body.matchAll(/recovery_chances:\s*\{\s*"([^"]+)"\s*:\s*([\d.]+)/g)].map(x => ({ item: x[1], chance: Number(x[2]) })),
       bonusSkillLevels: (body.match(/base_bonus_skill_levels:\s*\{([^}]*)\}/) || [])[1] || null
     };
+  }
+  return out;
+}
+
+/* ---------------- books ---------------- *
+ * A FINISHED book (save_data.books[id].is_finished, main.js:3875-3877) grants
+ * a PERMANENT xp_multipliers bonus via add_book_bonus - unlike milestones,
+ * these are not derivable from skill levels at all, only from the save's own
+ * `books` map. Previously entirely unmodeled; this closes that gap using the
+ * same save field the game itself reads on load. */
+function parseBooks(root) {
+  const src = read(root, "items.js");
+  const out = {};
+  const re = /book_stats\[\s*"([^"]+)"\s*\]\s*=\s*new BookData\(\{/g;
+  const marks = []; let m;
+  while ((m = re.exec(src))) marks.push({ name: m[1], at: m.index });
+  for (let i = 0; i < marks.length; i++) {
+    const body = src.slice(marks[i].at, i + 1 < marks.length ? marks[i + 1].at : src.length);
+    const bonuses = balancedAfter(body, "bonuses:");
+    const xpm = bonuses ? bonuses.body.match(/xp_multipliers:\s*\{([^}]*)\}/) : null;
+    const multipliers = {};
+    if (xpm) for (const p of xpm[1].matchAll(/"?([\w][\w ]*?)"?\s*:\s*([\d.]+)/g)) multipliers[p[1]] = Number(p[2]);
+    out[marks[i].name] = { name: marks[i].name, xpMultipliers: multipliers };
   }
   return out;
 }
@@ -328,8 +378,9 @@ function parseAll(root) {
     locations: parseLocations(root),
     items: parseItems(root),
     generated: parseGenerated(root),
-    recipes: parseRecipes(root)
+    recipes: parseRecipes(root),
+    books: parseBooks(root)
   };
 }
 
-module.exports = { strip, balancedAfter, parseAll, parseSkills, parseEnemies, parseLocations, parseItems, parseGenerated, parseRecipes };
+module.exports = { strip, balancedAfter, parseAll, parseSkills, parseEnemies, parseLocations, parseItems, parseGenerated, parseRecipes, parseBooks };

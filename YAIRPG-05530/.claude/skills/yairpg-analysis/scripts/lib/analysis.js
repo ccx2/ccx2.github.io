@@ -1,6 +1,6 @@
 "use strict";
 const F = require("./formulas");
-const { rateToReal, TICK_MIN_PER_REAL_MIN } = require("./config");
+const { rateToReal, TICK_MIN_PER_REAL_MIN, BROKEN_ENEMIES } = require("./config");
 
 /* All rates below are returned in BOTH clocks:
  *   perTickMin - the game's own nominal "minutes" (what tooltips count)
@@ -18,7 +18,7 @@ function activityRates(game, character) {
       const sk = character.skills[skillId];
       if (!sk) continue;
       if (!a.gathering) {
-        training.push({ skill: skillId, location: a.location, key: a.key, seasons: a.seasons, ...both(a.xpPerTick) });
+        training.push({ skill: skillId, location: a.location, key: a.key, display: a.display, seasons: a.seasons, ...both(a.xpPerTick) });
       } else {
         if (!a.timePeriod) continue;
         const { tickMinutes } = F.gatheringCycle({
@@ -26,7 +26,7 @@ function activityRates(game, character) {
         });
         if (!tickMinutes) continue;
         gathering.push({
-          skill: skillId, location: a.location, key: a.key, seasons: a.seasons,
+          skill: skillId, location: a.location, key: a.key, display: a.display, seasons: a.seasons,
           cycleTickMinutes: tickMinutes, cycleRealMinutes: tickMinutes / TICK_MIN_PER_REAL_MIN,
           ...both(a.xpPerTick / tickMinutes)
         });
@@ -67,8 +67,9 @@ function locationTypeRates(game) {
 function combatRates(game, { playerSpeed = null } = {}) {
   const rows = [];
   for (const z of Object.values(game.locations.zones)) {
+    if (z.challenge) continue;   // one-time gate, not a repeatable training/farming zone
     if (!z.enemies.length) continue;
-    const pool = z.enemies.map(n => game.enemies[n]).filter(Boolean);
+    const pool = z.enemies.map(n => game.enemies[n]).filter(Boolean).filter(e => !BROKEN_ENEMIES[e.name]);
     if (!pool.length) continue;
     const meanXp = pool.reduce((s, e) => s + e.xp_value, 0) / pool.length;
     const meanGroup = (z.groupSize[0] + z.groupSize[1]) / 2;
@@ -77,7 +78,7 @@ function combatRates(game, { playerSpeed = null } = {}) {
     const perSwing = F.combatXpPerSwing(meanXp, meanGroup);
     rows.push({
       zone: z.name, key: z.key, challenge: z.challenge, enemies: z.enemies,
-      meanXpValue: Math.round(meanXp * 10) / 10, meanGroup, maxEnemySpeed,
+      meanXpValue: Math.round(meanXp * 10) / 10, meanXpRaw: meanXp, meanGroup, maxEnemySpeed,
       throttle: Math.round(throttle * 1000) / 1000,
       perSwing: Math.round(perSwing * 10) / 10,
       ...both(perSwing * throttle),
@@ -92,7 +93,8 @@ function combatRates(game, { playerSpeed = null } = {}) {
  * Gathered materials are priced from the parsed activities at the
  * character's own effective level - NOT hardcoded. Combat drops are priced
  * from the OHK kill rate (ASSUMPTION[A6]) x drop chance x Butchering
- * (ASSUMPTION[A3], beast-tagged only).                                    */
+ * (beast-tagged only - confirmed against droprate_modifier_skills_for_tags
+ * in enemies.js for v0.5.5.30; recheck that map after a game version bump). */
 function baseCosts(game, character, { butcheringMult = 1, playerSpeed = null } = {}) {
   const cost = {};                       // item -> {realMinutes, source}
   const put = (item, realMinutes, source) => {
@@ -119,13 +121,24 @@ function baseCosts(game, character, { butcheringMult = 1, playerSpeed = null } =
 
   const killsPerRealMin = TICK_MIN_PER_REAL_MIN;   // OHK: one kill per swing per tick-minute
   for (const z of Object.values(game.locations.zones)) {
-    const pool = z.enemies.map(n => game.enemies[n]).filter(Boolean);
+    /* Challenge_zone (main.js/display.js: is_finished gates it out of
+       available_challenges once cleared) is a one-time gate, not a
+       repeatable farm - a steady-state cost must never source a material
+       from one. Verified 2026-09-06: without this, Warthog (challenge,
+       0.10/0.08 Boar meat/hide) undercuts the real repeatable source
+       (Forest clearing's "Boar", 0.02/0.04) as "cheapest". */
+    if (z.challenge) continue;
+    /* BROKEN_ENEMIES (config.js): coded but confirmed non-functional in the
+       live game via the dev's own source comment - e.g. "Enraged giant crab"
+       (enemies.js:588). No structural flag catches these; each was found by
+       hand, so treat this filter as a floor, not a guarantee. */
+    const pool = z.enemies.map(n => game.enemies[n]).filter(Boolean).filter(e => !BROKEN_ENEMIES[e.name]);
     if (!pool.length) continue;
     const maxEnemySpeed = Math.max(...pool.map(e => e.attack_speed || 0));
     const throttle = playerSpeed ? Math.min(1, playerSpeed / Math.max(playerSpeed, maxEnemySpeed)) : 1;
     for (const e of pool) {
       const share = 1 / pool.length;
-      const mult = e.tags.includes("beast") ? butcheringMult : 1;   // ASSUMPTION[A3]
+      const mult = e.tags.includes("beast") ? butcheringMult : 1;   // beast-tagged only, confirmed v0.5.5.30
       for (const l of e.loot) {
         const perMin = killsPerRealMin * throttle * share * l.chance * mult;
         put(l.item, 1 / perMin, `${z.name} / ${e.name}`);
@@ -216,6 +229,15 @@ function chainCost(game, character, costs, producers, pick, name, rarity, depth 
   }
   if (p.skill) out.xp[p.skill] = (out.xp[p.skill] || 0) + own;
 
+  /* main.js:2798-2801 crafting_tags_to_skills: crafting ANY item tagged
+     "medicine" (by any producer skill, not just Alchemy) grants Medicine
+     half of that craft's own recipe xp, on top of the producing skill's
+     own xp above. This is the "Medicine from crafting" pipeline. */
+  const producedItem = game.items[name];
+  if (p.skill !== "Medicine" && producedItem && producedItem.tags && producedItem.tags.includes("medicine")) {
+    out.xp["Medicine"] = (out.xp["Medicine"] || 0) + own / 2;
+  }
+
   out.realMinutes /= p.outCount;
   for (const s of Object.keys(out.xp)) out.xp[s] /= p.outCount;
   memo[name] = out;
@@ -242,7 +264,58 @@ function craftingRates(game, character, costs, { rarity = 1.1 } = {}) {
   return { rows, unresolved: [...unresolved] };
 }
 
+/* ---------------- consumable / sell pipelines -------------------------- *
+ * Gluttony, Medicine (use), and Haggling are not activities or recipes -
+ * their XP comes from USING or SELLING an item. But "how fast can you get
+ * that item" is exactly the gathering/crafting chain already built above,
+ * so reuse it: merge gathered-item times (costs) with crafted-item times
+ * (craft.rows), then rank items by the consumable/sell formula divided by
+ * that acquisition time. Supply, not the use/sell action itself, is the
+ * throttle (misc.js skill_consumable_tags / trade.js:151).             */
+function itemTimeTable(costs, craftRows) {
+  const timeFor = {};
+  for (const [item, c] of Object.entries(costs)) {
+    /* The "recycles at 100% on use" entry (ASSUMPTION[A6]) prices a
+       container as free WHEN CONSUMED AS A CRAFTING INPUT you already hold -
+       it is not a rate at which new units can be produced to sell or eat,
+       and must not leak into either pipeline below as a near-infinite rate. */
+    if (c.source === "recycled at 100% on use") continue;
+    timeFor[item] = c.realMinutes;
+  }
+  for (const r of craftRows) if (!timeFor[r.product] || r.realMinutes < timeFor[r.product]) timeFor[r.product] = r.realMinutes;
+  return timeFor;
+}
+
+/** items.js use_item: xp_to_add = (value/10)^0.6667 per use (main.js:3177), gated on `tag`. */
+function consumableRates(game, costs, craftRows, tag) {
+  const timeFor = itemTimeTable(costs, craftRows);
+  const rows = [];
+  for (const [name, it] of Object.entries(game.items)) {
+    if (!it.tags || !it.tags.includes(tag)) continue;
+    const realMinutes = timeFor[name];
+    if (!realMinutes || !it.value) continue;
+    const xpPerUse = F.xpConsumable(it.value);
+    rows.push({ item: name, realMinutes, perRealMin: xpPerUse / realMinutes, value: it.value });
+  }
+  return rows.sort((a, b) => b.perRealMin - a.perRealMin);
+}
+
+/** trade.js:151 Haggling xp = (sell_value + buy_value)/10. ASSUMPTION[A6]:
+ *  traders are not a source, so this only prices SELLING what you already
+ *  produce (buy_value = 0), not buy-low/sell-high trader arbitrage. */
+function sellRates(game, costs, craftRows) {
+  const timeFor = itemTimeTable(costs, craftRows);
+  const rows = [];
+  for (const [name, it] of Object.entries(game.items)) {
+    const realMinutes = timeFor[name];
+    if (!realMinutes || !it.value) continue;
+    rows.push({ item: name, realMinutes, perRealMin: (it.value / 10) / realMinutes, value: it.value });
+  }
+  return rows.sort((a, b) => b.perRealMin - a.perRealMin);
+}
+
 module.exports = {
   both, activityRates, activitySkills, locationTypeRates, combatRates,
-  baseCosts, craftingRates, buildProducers, typePicker, chainCost, tierOf
+  baseCosts, craftingRates, buildProducers, typePicker, chainCost, tierOf,
+  itemTimeTable, consumableRates, sellRates
 };

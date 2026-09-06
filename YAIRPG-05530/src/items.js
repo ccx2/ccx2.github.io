@@ -4933,7 +4933,7 @@ function add_gear() {
         name: "Basin gumbo",
         description: "An incredibly complex meal that's difficult to make, but it's got an indescribable taste",
         value: 100,
-        effects: [{ effect: "Varied seafood meal", duration: 90 }],
+        effects: [{ effect: "Varied seafood meal", duration: 900 }],
         tags: {"food": true},
     });
 	
