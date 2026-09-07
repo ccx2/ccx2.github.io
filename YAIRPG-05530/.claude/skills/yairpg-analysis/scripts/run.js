@@ -19,6 +19,13 @@ const n3 = x => (x == null ? "-" : (Math.round(x * 1000) / 1000).toLocaleString(
 const pad = (s, w) => String(s == null ? "" : s).padEnd(w);
 const hr = (c = "-") => console.log(c.repeat(78));
 
+/* n1() rounds to 1 decimal, so a genuine (if OHK-optimistic) drop-chain time
+   like 0.017 real min/unit prints as a bare "0" - reading exactly like a
+   free/already-in-inventory placeholder even though it is a real computed
+   farm rate (baseCosts drop chance x killsPerRealMin). Show sub-minute
+   per-unit times in seconds instead of rounding them away. */
+const fmtPerUnit = m => (m == null ? "-" : m < 1 ? n1(m * 60) + " sec/unit" : n1(m) + " real min/unit");
+
 /* Skills.js `names` renames a skill as it levels (e.g. "Strength of mind" ->
    "Iron will" at 15) and the object KEY this tool indexes everything by is
    not always the level-0 name - some skills key on their TOP-tier name
@@ -222,24 +229,39 @@ function modeFull() {
   for (const sk of Object.values(character.skills)) (byCat[sk.def.category] = byCat[sk.def.category] || []).push(sk);
   const cats = [...order.filter(c => byCat[c]), ...Object.keys(byCat).filter(c => !order.includes(c))];
 
-  console.log("BEST XP SOURCE PER SKILL   (rates are FINAL XP per REAL minute - the raw source rate x " +
-    "that skill's own multiplier, shown as the trailing x-value)\n");
+  console.log("BEST XP SOURCE PER SKILL   (sorted by real time to next level, soonest first; " +
+    "rate is FINAL XP per REAL minute - the raw source rate x that skill's own multiplier, shown as x-value)\n");
   const finalBest = {};
   for (const cat of cats) {
-    const rows = byCat[cat].filter(s => !s.maxed).sort((a, b) => b.level - a.level);
+    const rows = byCat[cat].filter(s => !s.maxed);
     if (!rows.length) continue;
-    console.log(`== ${cat} ==`);
-    for (const s of rows) {
+    const withTime = rows.map(s => {
       const b = best[s.id];
       const m = mult.forSkill(s.id, s.def.category);
+      const effRate = b ? b.perRealMin * m.value : null;
+      const realMinutesToNext = (effRate && s.xpToNext != null) ? s.xpToNext / effRate : null;
+      return { s, b, m, effRate, realMinutesToNext };
+    }).sort((a, b) => {
+      if (a.realMinutesToNext != null && b.realMinutesToNext != null) return a.realMinutesToNext - b.realMinutesToNext;
+      if (a.realMinutesToNext != null) return -1;
+      if (b.realMinutesToNext != null) return 1;
+      return b.s.level - a.s.level;
+    });
+    console.log(`== ${cat} ==`);
+    for (const { s, b, m, effRate, realMinutesToNext } of withTime) {
       const mech = CFG.MECHANIC_SOURCES[s.id];
       const shown = b ? `${b.label} [${b.kind}]`
         : mech ? `${mech}  [not computed - static guidance]`
         : "no source found - may be trained by a mechanic the rate engine does not model";
-      const rate = b ? n1(b.perRealMin * m.value) + " (x" + n3(m.value) + ")" : "-";
+      const rate = effRate != null ? n1(effRate) + " (x" + n3(m.value) + ")" : "-";
+      const timeToNext = realMinutesToNext != null
+        ? (realMinutesToNext < 60 ? n1(realMinutesToNext) + " min"
+          : realMinutesToNext < 1440 ? n1(realMinutesToNext / 60) + " h"
+          : n1(realMinutesToNext / 1440) + " d")
+        : "-";
       if (b) finalBest[s.id] = { perRealMin: b.perRealMin * m.value, label: b.label, kind: b.kind };
       console.log("   " + pad(dispName(s), 30) + pad(s.level + "/" + s.def.max, 9) +
-        pad(rate, 22) + shown);
+        pad(timeToNext, 11) + pad(rate, 22) + shown);
     }
     const maxed = byCat[cat].filter(s => s.maxed).map(dispName);
     if (maxed.length) console.log(`   (maxed, omitted: ${maxed.join(", ")})`);
@@ -310,12 +332,12 @@ function modeSkill(name) {
   for (const r of acts.training) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.display}`, "training"]);
   for (const r of acts.gathering) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.display} (cycle ${r.cycleTickMinutes} tick-min)`, "gathering"]);
   for (const r of types) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.zone} (${r.type} st.${r.stage})`, "passive"]);
-  for (const r of craft.rows) if (r.xp[sk.id] > 0) rows.push([r.xp[sk.id] / r.realMinutes, `craft ${r.product} (${n1(r.realMinutes)} real min/unit)`, "crafting"]);
+  for (const r of craft.rows) if (r.xp[sk.id] > 0) rows.push([r.xp[sk.id] / r.realMinutes, `craft ${r.product} (${fmtPerUnit(r.realMinutes)})`, "crafting"]);
   if (["Combat", "Evasion", "Iron skin", "Shield blocking", "Unarmed", "Pest killer", "Giant slayer"].includes(sk.id))
     for (const c of combat.slice(0, 5)) rows.push([c.perRealMin, `${c.zone} (${c.enemies.join("/")})`, "combat"]);
-  if (sk.id === "Gluttony") for (const f of food.slice(0, 8)) rows.push([f.perRealMin, `eat ${f.item} (${n1(f.realMinutes)} real min/unit)`, "consumable"]);
-  if (sk.id === "Medicine") for (const u of medicine.slice(0, 8)) rows.push([u.perRealMin, `use ${u.item} (${n1(u.realMinutes)} real min/unit)`, "consumable"]);
-  if (sk.id === "Haggling") for (const t of sellable.slice(0, 8)) rows.push([t.perRealMin, `sell ${t.item} (${n1(t.realMinutes)} real min/unit)`, "trade"]);
+  if (sk.id === "Gluttony") for (const f of food.slice(0, 8)) rows.push([f.perRealMin, `eat ${f.item} (${fmtPerUnit(f.realMinutes)})`, "consumable"]);
+  if (sk.id === "Medicine") for (const u of medicine.slice(0, 8)) rows.push([u.perRealMin, `use ${u.item} (${fmtPerUnit(u.realMinutes)})`, "consumable"]);
+  if (sk.id === "Haggling") for (const t of sellable.slice(0, 8)) rows.push([t.perRealMin, `sell ${t.item} (${fmtPerUnit(t.realMinutes)})`, "trade"]);
   rows.sort((a, b) => b[0] - a[0]);
   for (const [v, label, kind] of rows.slice(0, 15)) console.log("   " + pad(n1(v * m.value), 12) + pad(kind, 11) + label);
   const mech = CFG.MECHANIC_SOURCES[sk.id];

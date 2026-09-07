@@ -208,16 +208,40 @@ function typePicker(game, costs, producers = {}) {
   };
 }
 
-function tierOf(game, name) {
-  const it = game.items[name];
-  if (it && it.tier) return it.tier;
+/** Longest-matching `game.generated.mats` entry for a generated item name
+ *  (e.g. "Simple wooden short handle" -> the "rough wood" material, whose
+ *  displayName is "simple wooden"). Shared by tierOf() and componentBaseValue()
+ *  so the two never disagree on which material produced an item. */
+function matOf(game, name) {
   const lower = name.toLowerCase();
   let best = null, bestLen = 0;
   for (const mat of Object.values(game.generated.mats)) {
     const label = (mat.displayName || mat.key).toLowerCase();
-    if (lower.startsWith(label) && label.length > bestLen) { best = mat.tier; bestLen = label.length; }
+    if (lower.startsWith(label) && label.length > bestLen) { best = mat; bestLen = label.length; }
   }
   return best;
+}
+
+function tierOf(game, name) {
+  const it = game.items[name];
+  if (it && it.tier) return it.tier;
+  const mat = matOf(game, name);
+  return mat ? mat.tier : null;
+}
+
+/** crafting_component_filling.js:624 - the value baked into a GENERATED
+ *  component (handles, blades, armor pieces, ...) that never got a literal
+ *  items.js entry, so game.items[name].value is undefined for it. Without
+ *  this, sellRates()/craftingRates() silently price every such component at
+ *  0 and it can never win a Haggling/crafting-value comparison regardless of
+ *  how cheap it is to produce - confirmed missing 2026-09-06 (Simple wooden
+ *  short handle: producer exists, chainCost resolves it, but had no value). */
+function componentBaseValue(game, producers, name) {
+  const p = producers[name];
+  if (!p || p.kind !== "component") return null;
+  const mat = matOf(game, name);
+  if (!mat) return null;
+  return F.componentValue({ matValue: mat.value, tier: mat.tier, count: p.count });
 }
 
 /**
@@ -301,10 +325,15 @@ function craftingRates(game, character, costs, { rarity = 1.1 } = {}) {
     if (!c.ok || !isFinite(c.realMinutes) || c.realMinutes <= 0) continue;
     const total = Object.values(c.xp).reduce((a, b) => a + b, 0);
     if (total <= 0) continue;
+    // A literal items.js value wins if present; otherwise price a generated
+    // component with the same rarity roll already applied to its XP above
+    // (ASSUMPTION[A4]: flat rarity, not a full quality-distribution average).
+    const literalValue = (game.items[name] || {}).value;
+    const compBase = literalValue ? null : componentBaseValue(game, producers, name);
+    const value = literalValue || (compBase != null ? compBase * rarity : 0);
     rows.push({
       product: name, realMinutes: c.realMinutes, totalXp: total,
-      perRealMin: total / c.realMinutes, xp: c.xp,
-      value: (game.items[name] || {}).value || 0
+      perRealMin: total / c.realMinutes, xp: c.xp, value
     });
   }
   rows.sort((a, b) => b.perRealMin - a.perRealMin);
@@ -352,11 +381,20 @@ function consumableRates(game, costs, craftRows, tag) {
  *  produce (buy_value = 0), not buy-low/sell-high trader arbitrage. */
 function sellRates(game, costs, craftRows) {
   const timeFor = itemTimeTable(costs, craftRows);
+  const valueFor = {};
+  for (const [name, it] of Object.entries(game.items)) if (it.value) valueFor[name] = it.value;
+  /* Generated components (handles, blades, armor pieces, ...) have no
+     items.js literal and so no entry in game.items at all - without this,
+     every one of them prices at 0 and can never be a sell candidate no
+     matter how cheap it is to produce, silently favouring raw drops/gathers
+     over crafted components. craftingRates() now computes their value
+     too (componentBaseValue), so pull it from there instead of recomputing. */
+  for (const r of craftRows) if (r.value > 0 && !valueFor[r.product]) valueFor[r.product] = r.value;
   const rows = [];
-  for (const [name, it] of Object.entries(game.items)) {
+  for (const [name, value] of Object.entries(valueFor)) {
     const realMinutes = timeFor[name];
-    if (!realMinutes || !it.value) continue;
-    rows.push({ item: name, realMinutes, perRealMin: (it.value / 10) / realMinutes, value: it.value });
+    if (!realMinutes) continue;
+    rows.push({ item: name, realMinutes, perRealMin: (value / 10) / realMinutes, value });
   }
   return rows.sort((a, b) => b.perRealMin - a.perRealMin);
 }
@@ -364,5 +402,5 @@ function sellRates(game, costs, craftRows) {
 module.exports = {
   both, activityRates, activitySkills, locationTypeRates, combatRates,
   baseCosts, craftingRates, buildProducers, typePicker, chainCost, tierOf,
-  itemTimeTable, consumableRates, sellRates
+  matOf, componentBaseValue, itemTimeTable, consumableRates, sellRates
 };

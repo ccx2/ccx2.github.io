@@ -53,5 +53,13 @@
     "traders_as_material_source": false,
     "glass_recycles": true,
     "_note": "ASSUMPTION[A6]. User-stated play style, not derivable from save or source. one_hit_kill is CHECKED by the damage module when a damage anchor exists."
+  },
+
+  "known_exceptions": {
+    "Red ant swarm": {
+      "what": "The only enemy in the game that drops a normally-gatherable item: Oneberry/Golmoon leaf/Belmart leaf (0.005 chance each, usually Herbalism) and Wood log (0.002, usually Woodcutting) - enemies.js:381-395.",
+      "why_it_matters": "tags are [\"living\",\"insect\"] - NOT \"beast\" - so its drops never get the Butchering multiplier the way Bear/Frog/etc. do (analysis.js:141 already gates correctly on the beast tag; this is a documentation note, not a code fix). Its drop chances are also far below the matching gathering-activity rate, so baseCosts()'s cheapest-source pick should essentially never prefer it over gathering - if a future run ever shows Red ant swarm as the cheapest source for one of these 4 items, that is a red flag worth checking by hand before trusting the number.",
+      "_note": "Logged 2026-09-06 in place of adding a general drop-vs-gathering 'kind' field to the cost model - it's the only known case, so a plain note here covers it for near-zero cost. Revisit if a second such exception ever turns up."
+    }
   }
 }
