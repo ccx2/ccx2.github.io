@@ -94,6 +94,24 @@ const MECHANIC_SOURCES = {
 };
 
 /* ------------------------------------------------------------------ *
+ * UNIMPLEMENTED SKILLS
+ * Skill definitions that exist in skills.js (so they'd otherwise show up
+ * as a normal row) but have no way to train them in the current game
+ * version - confirmed by the user, not a rate-engine gap. Filtered out of
+ * `full`'s table entirely (not just uncommented-on) so they can't get
+ * silently re-surfaced as a "finding" in a future run. Re-check after a
+ * game_version bump rather than assuming this list still holds.
+ * ------------------------------------------------------------------ */
+const UNIMPLEMENTED_SKILLS = [
+  "Heat resistance",   // no add_xp_to_skill call anywhere in src/
+  "Dazzle resistance",  // needs a `bright` stage-2/3 zone; none exists
+  "Wands",              // wand weapon type not implemented
+  "Staffs",             // staff weapon type not implemented
+  "Berserker's stride", // stance not obtainable yet
+  "Flowing water"       // stance not obtainable yet
+];
+
+/* ------------------------------------------------------------------ *
  * BROKEN / NON-FUNCTIONAL ENEMIES
  * Enemies that are wired into a location's enemies_list (so the parser
  * can't tell them apart from a real, farmable enemy) but are confirmed
@@ -121,5 +139,6 @@ const rateToReal = ratePerTickMin => ratePerTickMin * TICK_MIN_PER_REAL_MIN;
 
 module.exports = {
   SKILL_DIR, CONFIG_PATH, load, save, ASSUMPTIONS, MECHANIC_SOURCES, BROKEN_ENEMIES,
+  UNIMPLEMENTED_SKILLS,
   TICKRATE, TICK_MIN_PER_REAL_MIN, REAL_SEC_PER_TICK, toRealMin, rateToReal
 };

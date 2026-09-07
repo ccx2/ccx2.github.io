@@ -229,11 +229,16 @@ function modeFull() {
   for (const sk of Object.values(character.skills)) (byCat[sk.def.category] = byCat[sk.def.category] || []).push(sk);
   const cats = [...order.filter(c => byCat[c]), ...Object.keys(byCat).filter(c => !order.includes(c))];
 
-  console.log("BEST XP SOURCE PER SKILL   (sorted by real time to next level, soonest first; " +
-    "rate is FINAL XP per REAL minute - the raw source rate x that skill's own multiplier, shown as x-value)\n");
+  console.log("BEST XP SOURCE PER SKILL   (every implemented, unmaxed skill - sorted by real time to " +
+    "next level, soonest first; rate is FINAL XP per REAL minute - the raw source rate " +
+    "x that skill's own multiplier, shown as x-value)\n");
   const finalBest = {};
   for (const cat of cats) {
-    const rows = byCat[cat].filter(s => !s.maxed);
+    // UNIMPLEMENTED_SKILLS filtered here, not just noted in prose, so an
+    // unimplemented skill can never resurface as a "finding" in a future
+    // run - see config.js for why each entry is excluded.
+    const catSkills = byCat[cat].filter(s => !CFG.UNIMPLEMENTED_SKILLS.includes(s.id));
+    const rows = catSkills.filter(s => !s.maxed);
     if (!rows.length) continue;
     const withTime = rows.map(s => {
       const b = best[s.id];
@@ -263,7 +268,7 @@ function modeFull() {
       console.log("   " + pad(dispName(s), 30) + pad(s.level + "/" + s.def.max, 9) +
         pad(timeToNext, 11) + pad(rate, 22) + shown);
     }
-    const maxed = byCat[cat].filter(s => s.maxed).map(dispName);
+    const maxed = catSkills.filter(s => s.maxed).map(dispName);
     if (maxed.length) console.log(`   (maxed, omitted: ${maxed.join(", ")})`);
     console.log("");
   }
