@@ -155,17 +155,39 @@ function baseCosts(game, character, { butcheringMult = 1, playerSpeed = null } =
 }
 
 /* ---------------- crafting chains ---------------- */
+/**
+ * @returns {producers, componentTypeIndex} - componentTypeIndex maps a
+ * component SLOT type (e.g. "shield base") to every concrete result name
+ * that can fill it, so an equipment-assembly producer (below) can pick the
+ * cheapest one instead of being fixed to a single hardcoded material.
+ */
 function buildProducers(game) {
   const producers = {};
+  const componentTypeIndex = {};
   for (const r of game.recipes) {
     if (r.variants.length) {
       for (const v of r.variants)
         producers[v.result] = { kind: "component", skill: r.skill, inputs: [{ id: v.mat, count: v.count }], outCount: 1, count: v.count };
+      if (r.componentType) {
+        const bucket = (componentTypeIndex[r.componentType] = componentTypeIndex[r.componentType] || []);
+        for (const v of r.variants) bucket.push(v.result);
+      }
     } else if (r.sub === "items" && r.result) {
       producers[r.result] = { kind: "items", skill: r.skill, inputs: r.inputs, outCount: r.outCount, recipeLevelMax: r.recipeLevelMax };
+    } else if (r.sub === "equipment" && r.equipComponents && r.equipComponents.length === 2) {
+      /* EquipmentRecipe (crafting_recipes.js:210) - glues two components
+         (e.g. shield base + shield handle) into a full item. Previously
+         had NO producer at all, so full equipment (Shield, Sword, Helmet,
+         Chestplate, Leg armor, Gauntlets, Armored shoes) could never appear
+         as a crafting-rate candidate, no matter how cheap - see memory
+         yairpg-sanity-check-rankings for the same class of gap found once
+         before (Haggling/componentBaseValue). Keyed by the recipe's own id
+         ("Shield", not an item name) since the concrete result item is
+         built dynamically from whichever components get chosen. */
+      producers[r.id] = { kind: "equipment", skill: r.skill, componentTypes: r.equipComponents, outCount: r.outCount || 1 };
     }
   }
-  return producers;
+  return { producers, componentTypeIndex };
 }
 
 /** Cheapest concrete member of a material_type wildcard. ASSUMPTION[A5]. */
@@ -200,9 +222,10 @@ function tierOf(game, name) {
 
 /**
  * Resolve a craftable down to base resources.
+ * @param componentTypeIndex slot-type -> candidate result names (equipment only)
  * @returns {realMinutes, xp:{skill:amount}, ok, why}
  */
-function chainCost(game, character, costs, producers, pick, name, rarity, depth = 0, memo = {}, unresolved = new Set()) {
+function chainCost(game, character, costs, producers, pick, componentTypeIndex, name, rarity, depth = 0, memo = {}, unresolved = new Set()) {
   if (costs[name]) return { realMinutes: costs[name].realMinutes, xp: {}, ok: true };
   if (memo[name]) return memo[name];
   if (depth > 8) return { ok: false, why: "recursion depth" };
@@ -210,22 +233,46 @@ function chainCost(game, character, costs, producers, pick, name, rarity, depth 
   if (!p) { unresolved.add(name); return { ok: false, why: "no producer: " + name }; }
 
   const out = { realMinutes: 0, xp: {}, ok: true };
-  for (const inp of p.inputs) {
-    const id = inp.id || pick(inp.type);
-    if (!id) { unresolved.add(inp.type); return { ok: false, why: "unmapped material_type: " + inp.type }; }
-    const c = chainCost(game, character, costs, producers, pick, id, rarity, depth + 1, memo, unresolved);
-    if (!c.ok) return c;
-    out.realMinutes += c.realMinutes * inp.count;
-    for (const [s, v] of Object.entries(c.xp)) out.xp[s] = (out.xp[s] || 0) + v * inp.count;
-  }
-
   const sk = character.skills[p.skill];
   const lv = sk ? sk.level : 0;
   let own = 0;
-  if (p.kind === "items") own = F.xpItems(p.recipeLevelMax || 1, lv);
-  else {
-    const t = tierOf(game, name);
-    if (t) own = F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: rarity, skillLevel: lv });
+
+  if (p.kind === "equipment") {
+    /* Two component SLOTS (e.g. "shield base" + "shield handle"), each
+       filled by whichever concrete candidate is cheapest to produce right
+       now - the game lets you pick any material for either slot, and a
+       real player picks the cheap one, not a fixed example. */
+    const chosenTiers = [];
+    for (const slotType of p.componentTypes) {
+      const candidates = componentTypeIndex[slotType] || [];
+      let best = null, bestTier = null;
+      for (const cand of candidates) {
+        const cc = chainCost(game, character, costs, producers, pick, componentTypeIndex, cand, rarity, depth + 1, memo, unresolved);
+        if (cc.ok && (!best || cc.realMinutes < best.realMinutes)) { best = cc; bestTier = tierOf(game, cand); }
+      }
+      if (!best) { unresolved.add("component_type:" + slotType); return { ok: false, why: "no candidate for component type: " + slotType }; }
+      out.realMinutes += best.realMinutes;
+      for (const [s, v] of Object.entries(best.xp)) out.xp[s] = (out.xp[s] || 0) + v;
+      chosenTiers.push(bestTier || 1);
+    }
+    const totalTier = chosenTiers.reduce((a, b) => a + b, 0);
+    const maxTier = Math.max(...chosenTiers);
+    own = F.xpAssembly({ totalTier, maxTier, rarityMult: rarity, skillLevel: lv });
+  } else {
+    for (const inp of p.inputs) {
+      const id = inp.id || pick(inp.type);
+      if (!id) { unresolved.add(inp.type); return { ok: false, why: "unmapped material_type: " + inp.type }; }
+      const c = chainCost(game, character, costs, producers, pick, componentTypeIndex, id, rarity, depth + 1, memo, unresolved);
+      if (!c.ok) return c;
+      out.realMinutes += c.realMinutes * inp.count;
+      for (const [s, v] of Object.entries(c.xp)) out.xp[s] = (out.xp[s] || 0) + v * inp.count;
+    }
+
+    if (p.kind === "items") own = F.xpItems(p.recipeLevelMax || 1, lv);
+    else {
+      const t = tierOf(game, name);
+      if (t) own = F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: rarity, skillLevel: lv });
+    }
   }
   if (p.skill) out.xp[p.skill] = (out.xp[p.skill] || 0) + own;
 
@@ -245,12 +292,12 @@ function chainCost(game, character, costs, producers, pick, name, rarity, depth 
 }
 
 function craftingRates(game, character, costs, { rarity = 1.1 } = {}) {
-  const producers = buildProducers(game);
+  const { producers, componentTypeIndex } = buildProducers(game);
   const pick = typePicker(game, costs, producers);
   const memo = {}, unresolved = new Set();
   const rows = [];
   for (const name of Object.keys(producers)) {
-    const c = chainCost(game, character, costs, producers, pick, name, rarity, 0, memo, unresolved);
+    const c = chainCost(game, character, costs, producers, pick, componentTypeIndex, name, rarity, 0, memo, unresolved);
     if (!c.ok || !isFinite(c.realMinutes) || c.realMinutes <= 0) continue;
     const total = Object.values(c.xp).reduce((a, b) => a + b, 0);
     if (total <= 0) continue;

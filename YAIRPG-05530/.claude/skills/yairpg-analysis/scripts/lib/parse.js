@@ -339,6 +339,31 @@ function parseGenerated(root) {
   return { counts, mats };
 }
 
+/* Weapon-head and weapon-handle ComponentRecipes (crafting_recipes.js
+   "weapon components" block, ~line 418) never set `component_type:` on the
+   recipe itself - unlike armor/shield ComponentRecipes, which all declare it
+   explicitly. The concrete `component_type` those items actually carry only
+   exists on the runtime item (hand-written for the metal heads in items.js,
+   or synthesized by crafting_component_filling.js for other tiers - see
+   memory yairpg-generated-items), neither of which this parser reads for
+   these recipes. But the recipe's own NAME already names the slot it fills
+   1:1 - "Short blade"/"Long blade"/"Axe head"/"Hammer head" match their type
+   string verbatim, and "Short hilt"/"Medium handle"/"Long shaft" map to
+   "short handle"/"medium handle"/"long handle" (an old hilt/shaft naming
+   that survived a rename to "handle" everywhere else - see the
+   `component_name_mapping` "for loading older saves" table in misc.js,
+   which documents the same old->new pairs). Used ONLY as a fallback when no
+   explicit component_type is present. */
+const WEAPON_COMPONENT_TYPE_BY_NAME = {
+  "short blade": "short blade",
+  "long blade": "long blade",
+  "axe head": "axe head",
+  "hammer head": "hammer head",
+  "short hilt": "short handle",
+  "medium handle": "medium handle",
+  "long shaft": "long handle",
+};
+
 /* ---------------- recipes ---------------- */
 function parseRecipes(root) {
   const src = read(root, "crafting_recipes.js");
@@ -356,13 +381,24 @@ function parseRecipes(root) {
       inputs.push({ type: x[1], count: Number(x[2]) });
     const variants = [...body.matchAll(/material_id:\s*"([^"]+)"\s*,\s*count:\s*(\d+)\s*,\s*result_id:\s*"([^"]+)"/g)]
       .map(x => ({ mat: x[1], count: Number(x[2]), result: x[3] }));
+    /* EquipmentRecipe (crafting_recipes.js:210) has no material_id/result -
+       its two component SLOTS are named by type in a `components: [...]`
+       pair (e.g. ["shield base","shield handle"]), and the concrete item
+       going into each slot is chosen at craft time, not fixed by the
+       recipe. Capture the slot types so a producer can later pick the
+       cheapest concrete component for each. */
+    const equipComponents = cls === "EquipmentRecipe"
+      ? [...(body.match(/components:\s*\[([^\]]*)\]/) || ["", ""])[1].matchAll(/"([^"]+)"/g)].map(x => x[1])
+      : [];
+    const explicitComponentType = (body.match(/component_type:\s*"([^"]+)"/) || [])[1] || null;
     out.push({
       family: fam, sub, id, cls,
       skill: (body.match(/recipe_skill:\s*"([^"]+)"/) || [])[1] || (cls === "EquipmentRecipe" ? "Crafting" : null),
       recipeLevelMax: rl ? Number(rl[2]) : null,
       result: res ? res[1] : null,
       outCount: res ? Number(res[2]) : 1,
-      componentType: (body.match(/component_type:\s*"([^"]+)"/) || [])[1] || null,
+      componentType: explicitComponentType || WEAPON_COMPONENT_TYPE_BY_NAME[id.toLowerCase()] || null,
+      equipComponents,
       inputs, variants
     });
   }
