@@ -229,10 +229,12 @@ function modeFull() {
   for (const sk of Object.values(character.skills)) (byCat[sk.def.category] = byCat[sk.def.category] || []).push(sk);
   const cats = [...order.filter(c => byCat[c]), ...Object.keys(byCat).filter(c => !order.includes(c))];
 
-  console.log("BEST XP SOURCE PER SKILL   (every implemented, unmaxed skill - sorted by real time to " +
-    "next level, soonest first; rate is FINAL XP per REAL minute - the raw source rate " +
-    "x that skill's own multiplier, shown as x-value)\n");
+  console.log("BEST XP SOURCE PER SKILL   (every implemented, unmaxed skill, one table per category - " +
+    "sorted by real time to next level, soonest first; the source column's trailing `(rate x multiplier)` " +
+    "is the FINAL XP per REAL minute - the raw source rate x that skill's own multiplier - kept there so " +
+    "the number stays auditable without a separate column)\n");
   const finalBest = {};
+  const md = s => String(s).replace(/\|/g, "\\|"); // keep skill/source text from breaking table cells
   for (const cat of cats) {
     // UNIMPLEMENTED_SKILLS filtered here, not just noted in prose, so an
     // unimplemented skill can never resurface as a "finding" in a future
@@ -252,25 +254,26 @@ function modeFull() {
       if (b.realMinutesToNext != null) return 1;
       return b.s.level - a.s.level;
     });
-    console.log(`== ${cat} ==`);
+    console.log(`### ${cat}\n`);
+    console.log("| Skill | Level | Time to next level | Source |");
+    console.log("|---|---|---|---|");
     for (const { s, b, m, effRate, realMinutesToNext } of withTime) {
       const mech = CFG.MECHANIC_SOURCES[s.id];
       const shown = b ? `${b.label} [${b.kind}]`
         : mech ? `${mech}  [not computed - static guidance]`
         : "no source found - may be trained by a mechanic the rate engine does not model";
-      const rate = effRate != null ? n1(effRate) + " (x" + n3(m.value) + ")" : "-";
+      const rateSuffix = effRate != null ? ` (${n1(effRate)} XP/real-min, x${n3(m.value)})` : "";
       const timeToNext = realMinutesToNext != null
         ? (realMinutesToNext < 60 ? n1(realMinutesToNext) + " min"
           : realMinutesToNext < 1440 ? n1(realMinutesToNext / 60) + " h"
           : n1(realMinutesToNext / 1440) + " d")
         : "-";
       if (b) finalBest[s.id] = { perRealMin: b.perRealMin * m.value, label: b.label, kind: b.kind };
-      console.log("   " + pad(dispName(s), 30) + pad(s.level + "/" + s.def.max, 9) +
-        pad(timeToNext, 11) + pad(rate, 22) + shown);
+      console.log(`| ${md(dispName(s))} | ${s.level}/${s.def.max} | ${timeToNext} | ${md(shown + rateSuffix)} |`);
     }
-    const maxed = catSkills.filter(s => s.maxed).map(dispName);
-    if (maxed.length) console.log(`   (maxed, omitted: ${maxed.join(", ")})`);
     console.log("");
+    const maxed = catSkills.filter(s => s.maxed).map(dispName);
+    if (maxed.length) console.log(`*Maxed (omitted): ${maxed.join(", ")}*\n`);
   }
 
   if (craft.unresolved.length) {

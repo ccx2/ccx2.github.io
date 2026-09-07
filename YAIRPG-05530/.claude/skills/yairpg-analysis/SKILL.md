@@ -17,7 +17,7 @@ node .claude/skills/yairpg-analysis/scripts/run.js full
 
 | Command | Does |
 |---|---|
-| `full` *(default)* | Best XP method for every unmaxed, implemented skill at the character's current level & bonuses (maxed skills are listed by name in a footer line per category, not given their own row). Skills that exist in `skills.js` but have no way to train them yet (see `UNIMPLEMENTED_SKILLS` in `config.js`) are filtered out entirely, not just unmentioned. Skills are grouped into sections purely for presentation - each skill sits under its own skill-definition category (Activity, Crafting, Combat, etc., from `skills.js` `category`), never under save-specific or ad-hoc groupings |
+| `full` *(default)* | Best XP method for every unmaxed, implemented skill at the character's current level & bonuses, rendered as one Markdown table per category (Skill / Level / Time to next level / Source - the source cell carries the final rate and multiplier in parens so it stays auditable without a separate column). Maxed skills are listed by name in a line below the table, not given their own row. Skills that exist in `skills.js` but have no way to train them yet (see `UNIMPLEMENTED_SKILLS` in `config.js`) are filtered out entirely, not just unmentioned. Categories are sections purely for presentation - each skill sits under its own skill-definition category (Activity, Crafting, Combat, etc., from `skills.js` `category`), never under save-specific or ad-hoc groupings |
 | `milestones` | Outstanding milestones, split into "unlocks content" and "stat bumps only" |
 | `skill <name>` | One skill: every source ranked, plus its own outstanding milestones |
 | `ohk [zone]` | Verifies the one-hit-kill premise per stance and flags attack-speed drag |
