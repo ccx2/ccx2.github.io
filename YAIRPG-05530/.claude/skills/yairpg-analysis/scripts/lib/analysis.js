@@ -95,7 +95,7 @@ function combatRates(game, { playerSpeed = null } = {}) {
  * from the OHK kill rate (ASSUMPTION[A6]) x drop chance x Butchering
  * (beast-tagged only - confirmed against droprate_modifier_skills_for_tags
  * in enemies.js for v0.5.5.30; recheck that map after a game version bump). */
-function baseCosts(game, character, { butcheringMult = 1, playerSpeed = null } = {}) {
+function baseCosts(game, character, { butcheringMult = 1, playerSpeed = null, freeGlass = true } = {}) {
   const cost = {};                       // item -> {realMinutes, source}
   const put = (item, realMinutes, source) => {
     if (!isFinite(realMinutes) || realMinutes <= 0) return;
@@ -147,9 +147,14 @@ function baseCosts(game, character, { butcheringMult = 1, playerSpeed = null } =
   }
 
   /* Glass recycles at 100% on USE (items.js recovery_chances, main.js:3167),
-     so in steady state a container is free. ASSUMPTION[A6]. */
-  for (const it of Object.values(game.items)) {
-    for (const rec of it.recovery) if (rec.chance >= 1) put(rec.item, 1e-9, "recycled at 100% on use");
+     so in steady state a container is free. ASSUMPTION[A6]. Callers that want
+     the container's real acquisition cost instead (freeGlass: false) skip
+     this block entirely, so chainCost() falls through to the container's own
+     producer/gathering chain rather than short-circuiting on this entry. */
+  if (freeGlass) {
+    for (const it of Object.values(game.items)) {
+      for (const rec of it.recovery) if (rec.chance >= 1) put(rec.item, 1e-9, "recycled at 100% on use");
+    }
   }
   return cost;
 }

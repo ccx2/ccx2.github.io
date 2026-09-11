@@ -140,7 +140,7 @@ function xpMultiplierContext(character, game) {
 }
 
 /* ---------------- best source per skill ---------------- */
-function bestSources(game, character, cfg) {
+function bestSources(game, character, cfg, { freeGlass = true } = {}) {
   const playerSpeed = cfg.damage_anchor && cfg.damage_anchor.attack_speed;
   const butchering = character.skills.Butchering
     ? Math.pow(character.skills.Butchering.def.coefficient || 2, character.skills.Butchering.level / character.skills.Butchering.def.max)
@@ -149,7 +149,7 @@ function bestSources(game, character, cfg) {
   const acts = A.activityRates(game, character);
   const types = A.locationTypeRates(game);
   const combat = A.combatRates(game, { playerSpeed });
-  const costs = A.baseCosts(game, character, { butcheringMult: butchering, playerSpeed });
+  const costs = A.baseCosts(game, character, { butcheringMult: butchering, playerSpeed, freeGlass });
   const craft = A.craftingRates(game, character, costs);
 
   const best = {};
@@ -318,7 +318,7 @@ function modeMilestones() {
   show("Stat bumps only", ms.statsOnly);
 }
 
-function modeSkill(name) {
+function modeSkill(name, { freeGlass = true } = {}) {
   const { cfg, game, character, found } = boot();
   const sk = character.skills[name];
   if (!sk) {
@@ -327,6 +327,8 @@ function modeSkill(name) {
     process.exit(1);
   }
   printSaveHeader(found, character);
+  if (!freeGlass) console.log("NOTE   --no-free-glass: recyclable glass containers (ASSUMPTION[A6]) are priced " +
+    "at their real gather/craft cost instead of treated as free.");
   const mult = xpMultiplierContext(character, game);
   const m = mult.forSkill(sk.id, sk.def.category);
   hr("=");
@@ -337,7 +339,7 @@ function modeSkill(name) {
     `\n  xp multiplier x${n3(m.value)}  (named x${n3(m.parts.named)} * all_skill x${n3(m.parts.all_skill)} * ` +
     `all x${n3(m.parts.all)} * category x${n3(m.parts.category)})`);
 
-  const { combat, craft, acts, types, food, medicine, sellable } = bestSources(game, character, cfg);
+  const { combat, craft, acts, types, food, medicine, sellable } = bestSources(game, character, cfg, { freeGlass });
   console.log("\nSOURCES (FINAL XP per real minute, this skill's own multiplier already applied)");
   const rows = [];
   for (const r of acts.training) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.display}`, "training"]);
@@ -528,11 +530,13 @@ function modeDiff() {
 }
 
 /* ---------------- dispatch ---------------- */
-const [cmd, ...rest] = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const noFreeGlass = rawArgs.includes("--no-free-glass");
+const [cmd, ...rest] = rawArgs.filter(a => a !== "--no-free-glass");
 switch ((cmd || "full").toLowerCase()) {
   case "full": modeFull(); break;
   case "milestones": modeMilestones(); break;
-  case "skill": modeSkill(rest.join(" ")); break;
+  case "skill": modeSkill(rest.join(" "), { freeGlass: !noFreeGlass }); break;
   case "ohk": modeOhk(rest.join(" ")); break;
   case "station": modeStation(rest.join(" ")); break;
   case "damage-anchor": modeDamageAnchor(rest[0], rest[1]); break;
