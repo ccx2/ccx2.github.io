@@ -247,16 +247,24 @@ function componentBaseValue(game, producers, name) {
 /**
  * Resolve a craftable down to base resources.
  * @param componentTypeIndex slot-type -> candidate result names (equipment only)
- * @returns {realMinutes, xp:{skill:amount}, ok, why}
+ * @returns {realMinutes, xp:{skill:amount}, ownXp:{skill:amount}, ok, why}
+ *   xp    - rolled up across the WHOLE chain (this craft's own xp PLUS every
+ *           upstream sub-craft's xp), for "real minutes to produce X from
+ *           base resources" style costing (sellRates/consumableRates).
+ *   ownXp - ONLY what a single craft() action of this recipe itself awards
+ *           (main.js craft(): one call grants xp to exactly one skill, plus
+ *           the "medicine" tag half-share) - for ranking individual craft
+ *           actions as a training source per skill. Never sum ownXp across
+ *           the chain; it deliberately excludes recursed sub-craft xp.
  */
 function chainCost(game, character, costs, producers, pick, componentTypeIndex, name, rarity, depth = 0, memo = {}, unresolved = new Set()) {
-  if (costs[name]) return { realMinutes: costs[name].realMinutes, xp: {}, ok: true };
+  if (costs[name]) return { realMinutes: costs[name].realMinutes, xp: {}, ownXp: {}, ok: true };
   if (memo[name]) return memo[name];
   if (depth > 8) return { ok: false, why: "recursion depth" };
   const p = producers[name];
   if (!p) { unresolved.add(name); return { ok: false, why: "no producer: " + name }; }
 
-  const out = { realMinutes: 0, xp: {}, ok: true };
+  const out = { realMinutes: 0, xp: {}, ownXp: {}, ok: true };
   const sk = character.skills[p.skill];
   const lv = sk ? sk.level : 0;
   let own = 0;
@@ -298,19 +306,25 @@ function chainCost(game, character, costs, producers, pick, componentTypeIndex, 
       if (t) own = F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: rarity, skillLevel: lv });
     }
   }
-  if (p.skill) out.xp[p.skill] = (out.xp[p.skill] || 0) + own;
+  if (p.skill) {
+    out.xp[p.skill] = (out.xp[p.skill] || 0) + own;
+    out.ownXp[p.skill] = (out.ownXp[p.skill] || 0) + own;
+  }
 
   /* main.js:2798-2801 crafting_tags_to_skills: crafting ANY item tagged
      "medicine" (by any producer skill, not just Alchemy) grants Medicine
      half of that craft's own recipe xp, on top of the producing skill's
-     own xp above. This is the "Medicine from crafting" pipeline. */
+     own xp above. This is the "Medicine from crafting" pipeline - it is
+     awarded on THIS craft action itself, so it belongs in ownXp too. */
   const producedItem = game.items[name];
   if (p.skill !== "Medicine" && producedItem && producedItem.tags && producedItem.tags.includes("medicine")) {
     out.xp["Medicine"] = (out.xp["Medicine"] || 0) + own / 2;
+    out.ownXp["Medicine"] = (out.ownXp["Medicine"] || 0) + own / 2;
   }
 
   out.realMinutes /= p.outCount;
   for (const s of Object.keys(out.xp)) out.xp[s] /= p.outCount;
+  for (const s of Object.keys(out.ownXp)) out.ownXp[s] /= p.outCount;
   memo[name] = out;
   return out;
 }
@@ -333,7 +347,7 @@ function craftingRates(game, character, costs, { rarity = 1.1 } = {}) {
     const value = literalValue || (compBase != null ? compBase * rarity : 0);
     rows.push({
       product: name, realMinutes: c.realMinutes, totalXp: total,
-      perRealMin: total / c.realMinutes, xp: c.xp, value
+      perRealMin: total / c.realMinutes, xp: c.xp, ownXp: c.ownXp, value
     });
   }
   rows.sort((a, b) => b.perRealMin - a.perRealMin);

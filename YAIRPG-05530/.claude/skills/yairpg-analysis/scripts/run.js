@@ -161,7 +161,10 @@ function bestSources(game, character, cfg) {
   for (const r of acts.training) offer(r.skill, r.perRealMin, `${r.location} - ${r.display}`, "training");
   for (const r of acts.gathering) offer(r.skill, r.perRealMin, `${r.location} - ${r.display}`, "gathering");
   for (const r of types) offer(r.skill, r.perRealMin, `${r.zone} (${r.type} st.${r.stage})`, "passive");
-  for (const r of craft.rows) for (const [sk, v] of Object.entries(r.xp)) {
+  // ownXp (not the rolled-up chain xp): a single craft() action only ever
+  // awards xp to its OWN recipe skill (main.js craft()), never to skills
+  // used further up the material chain - see chainCost() in analysis.js.
+  for (const r of craft.rows) for (const [sk, v] of Object.entries(r.ownXp)) {
     if (v > 0) offer(sk, (v / r.realMinutes), `craft ${r.product}`, "crafting");
   }
 
@@ -340,7 +343,7 @@ function modeSkill(name) {
   for (const r of acts.training) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.display}`, "training"]);
   for (const r of acts.gathering) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.location} - ${r.display} (cycle ${r.cycleTickMinutes} tick-min)`, "gathering"]);
   for (const r of types) if (r.skill === sk.id) rows.push([r.perRealMin, `${r.zone} (${r.type} st.${r.stage})`, "passive"]);
-  for (const r of craft.rows) if (r.xp[sk.id] > 0) rows.push([r.xp[sk.id] / r.realMinutes, `craft ${r.product} (${fmtPerUnit(r.realMinutes)})`, "crafting"]);
+  for (const r of craft.rows) if (r.ownXp[sk.id] > 0) rows.push([r.ownXp[sk.id] / r.realMinutes, `craft ${r.product} (${fmtPerUnit(r.realMinutes)})`, "crafting"]);
   if (["Combat", "Evasion", "Iron skin", "Shield blocking", "Unarmed", "Pest killer", "Giant slayer"].includes(sk.id))
     for (const c of combat.slice(0, 5)) rows.push([c.perRealMin, `${c.zone} (${c.enemies.join("/")})`, "combat"]);
   if (sk.id === "Gluttony") for (const f of food.slice(0, 8)) rows.push([f.perRealMin, `eat ${f.item} (${fmtPerUnit(f.realMinutes)})`, "consumable"]);
