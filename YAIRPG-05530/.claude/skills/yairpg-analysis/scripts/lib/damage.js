@@ -69,24 +69,35 @@ function componentProfile({ mat, type, K }) {
   const count = K.counts[type] || 1;
   const isHead = ["short blade", "long blade", "axe head", "hammer head"].includes(type);
   if (isHead) {
-    const attackValue = K.baseAttack
+    const rawAttackValue = K.baseAttack
       * (1 + (K.strengthImpact[type] || 0) * (mat.strength / 100))
       * mat.tier
       * (1 + (K.weightImpact[type] || 0) * (mat.weight / 100)) / 8;
+    // crafting_component_filling.js:653 floors the stored attack_value (to 0.1 below 10, else to an integer)
+    const attackValue = Math.abs(rawAttackValue) < 10 ? Math.floor(rawAttackValue * 10) / 10 : Math.floor(rawAttackValue);
     const speed = Math.round(100 *
       (1 + (mat.tier - 1) / 10) / (1 + (K.weightImpactOnSpeed[type] || 0) * mat.weight / 1000)) / 100;
     return { attackValue, attackMultiplier: 1, speed, tier: mat.tier, count };
   }
-  // handle
-  const attackMultiplier = Math.floor(100 *
+  // handle. items.js:395 WeaponComponent gives long handles a built-in x1.5 attack_multiplier;
+  // items.js:975 calculateAttackPower multiplies it with the material's component_stats.attack_power.multiplier
+  const handleClassMultiplier = type === "long handle" ? 1.5 : 1;
+  const attackMultiplier = handleClassMultiplier * Math.floor(100 *
     (1 + (1 + mat.tier / 20) * (1 + (K.weightImpact[type] || 0) * (mat.weight - 40)) / 1000)) / 100;
   const speed = Math.floor(100 *
     ((1 + mat.tier / 20) / (1 + (K.weightImpactOnSpeed[type] || 0) * (mat.weight - 50) / 1000))) / 100;
   return { attackValue: 0, attackMultiplier, speed, tier: mat.tier, count };
 }
 
-/** Full weapon = head + handle. items.js:975 calculateAttackPower. */
+/** crafting_recipes.js:31 - hard ceiling on crafted equipment quality (reached at crafting skill 54). */
+const QUALITY_CAP_EQUIPMENT = 250;
+
+/**
+ * Full weapon = head + handle. items.js:975 calculateAttackPower.
+ * Returns null when `quality` is above QUALITY_CAP_EQUIPMENT: no such weapon can be crafted.
+ */
 function weaponProfile({ headMat, headType, handleMat, handleType, quality, rarityMult, K }) {
+  if (quality > QUALITY_CAP_EQUIPMENT) return null;
   const h = componentProfile({ mat: headMat, type: headType, K });
   const g = componentProfile({ mat: handleMat, type: handleType, K });
   const raw = (h.attackValue + g.attackValue) * h.attackMultiplier * g.attackMultiplier
@@ -139,4 +150,4 @@ function checkZone({ zone, enemies, anchor, loadouts, armorPen = 0 }) {
   return { zone: zone.name || zone.key, rows };
 }
 
-module.exports = { parseStances, parseCombatConstants, componentProfile, weaponProfile, damageAfterDefense, checkZone };
+module.exports = { QUALITY_CAP_EQUIPMENT, parseStances, parseCombatConstants, componentProfile, weaponProfile, damageAfterDefense, checkZone };
