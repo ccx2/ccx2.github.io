@@ -301,25 +301,28 @@ function chainCost(game, character, costs, producers, pick, componentTypeIndex, 
        now - the game lets you pick any material for either slot, and a
        real player picks the cheap one, not a fixed example. */
     const chosenTiers = [], chosenQ = [];
+    let componentValueSum = 0;   // items.js:146 getEquipmentValue sums each component's LISTED value
     for (const slotType of p.componentTypes) {
       const candidates = componentTypeIndex[slotType] || [];
-      let best = null, bestTier = null;
+      let best = null, bestTier = null, bestName = null;
       for (const cand of candidates) {
         const cc = chainCost(game, character, costs, producers, pick, componentTypeIndex, cand, qm, depth + 1, memo, unresolved);
-        if (cc.ok && (!best || cc.realMinutes < best.realMinutes)) { best = cc; bestTier = tierOf(game, cand); }
+        if (cc.ok && (!best || cc.realMinutes < best.realMinutes)) { best = cc; bestTier = tierOf(game, cand); bestName = cand; }
       }
       if (!best) { unresolved.add("component_type:" + slotType); return { ok: false, why: "no candidate for component type: " + slotType }; }
       out.realMinutes += best.realMinutes;
       for (const [s, v] of Object.entries(best.xp)) out.xp[s] = (out.xp[s] || 0) + v;
       chosenTiers.push(bestTier || 1);
       chosenQ.push(best.meanQuality);
+      componentValueSum += (game.items[bestName] || {}).value || componentBaseValue(game, producers, bestName) || 0;
     }
     const totalTier = chosenTiers.reduce((a, b) => a + b, 0);
     const maxTier = Math.max(...chosenTiers);
     const q = assemblyQuality(sk ? sk.def.max : 60, qm, p, lv, chosenTiers, chosenQ, maxTier);
     if (q) {
       const e = F.expectedOverQuality(q.range, m => F.xpAssembly({ totalTier, maxTier, rarityMult: m, skillLevel: lv }));
-      own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = q.range;
+      own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = q.range; out.qualityDist = F.qualityDistribution(q.range);
+      out.equipBaseValue = 1.25 * componentValueSum;
     } else {
       own = F.xpAssembly({ totalTier, maxTier, rarityMult: qm.flat, skillLevel: lv });
     }
@@ -341,7 +344,7 @@ function chainCost(game, character, costs, producers, pick, componentTypeIndex, 
         if (tierDiff != null) {
           const range = F.qualityRange({ skillLevel: lv, skillMaxLevel: sk ? sk.def.max : 60, tierDiff: tierDiff - t });
           const e = F.expectedOverQuality(range, m => F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: m, skillLevel: lv }));
-          own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = range;
+          own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = range; out.qualityDist = F.qualityDistribution(range);
         } else own = F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: qm.flat, skillLevel: lv });
       }
     }
@@ -384,12 +387,15 @@ function craftingRates(game, character, costs, { rarity = 1.1, stationTiers = nu
     const total = Object.values(c.xp).reduce((a, b) => a + b, 0);
     if (total <= 0) continue;
     // A literal items.js value wins if present; otherwise price a generated
-    // component with the same weighted-mean rarity multiplier its XP used
-    // (flat `rarity` only when no station table was supplied). The quality/100
-    // factor of the real sale price is still not applied - pre-existing gap.
+    // component by its real sale formula, averaged over the same quality roll
+    // its XP used: round(value * quality/100 * rarityMult) per roll. Flat
+    // `rarity` only when no station table was supplied (no distribution).
     const literalValue = (game.items[name] || {}).value;
     const compBase = literalValue ? null : componentBaseValue(game, producers, name);
-    const value = literalValue || (compBase != null ? compBase * (c.meanRarityMult || rarity) : 0);
+    const value = literalValue ||
+      (compBase != null ? (c.qualityDist ? F.expectedSalePrice(compBase, c.qualityDist) : compBase * rarity)
+        // Assembled equipment: 1.25 x summed component values x quality/100 x rarity (getEquipmentValue)
+        : c.equipBaseValue && c.qualityDist ? F.expectedSalePrice(c.equipBaseValue, c.qualityDist) : 0);
     rows.push({
       product: name, realMinutes: c.realMinutes, totalXp: total,
       perRealMin: total / c.realMinutes, xp: c.xp, ownXp: c.ownXp, value,

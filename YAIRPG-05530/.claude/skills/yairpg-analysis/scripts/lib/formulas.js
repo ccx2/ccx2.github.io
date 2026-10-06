@@ -174,6 +174,24 @@ const xpEffect = (baseXpValue, duration) => baseXpValue * Math.pow(duration, 0.3
 const componentValue = ({ matValue, tier, count }) =>
   (matValue ? Math.round(matValue * count) : Math.round(tier * 35 * count)) + 10;
 
+/* ---- sale price of a quality-bearing item ----------------------------- *
+ * misc.js:99 round_item_price (always rounds UP, coarser as the price grows)
+ * and items.js:228 getBaseValue: price = round(value * quality/100 * rarityMult).
+ * Rounding happens per roll, so it is applied inside the weighted mean rather
+ * than to the mean (the step sizes make that a visible difference at >199).  */
+function roundItemPrice(price) {
+  if (price > 19999) return Math.ceil(price / 1000) * 1000;
+  if (price > 1999) return Math.ceil(price / 100) * 100;
+  if (price > 199) return Math.ceil(price / 10) * 10;
+  return Math.ceil(price);
+}
+
+/** Expected base sale price of an item with listed `value`, over a quality distribution
+ *  ([{quality,p}] from qualityDistribution). */
+function expectedSalePrice(baseValue, dist) {
+  return dist.reduce((a, { quality, p }) => a + p * roundItemPrice(baseValue * (quality / 100) * rarityOf(quality).mult), 0);
+}
+
 /* ---- XP multiplier ---------------------------------------------------- *
  * character.xp_bonuses is runtime-only and is NOT in the save, so this is
  * reconstructed, not read. Never default to 1: a past session did and was
@@ -220,7 +238,7 @@ function round1(x) { return Math.round(10 * x) / 10; }
 
 module.exports = {
   totalXpToReach, levelFromXp, xpToNextLevel, skillDisplayName,
-  rarityOf, qualityRange, qualityDistribution, expectedOverQuality,
+  rarityOf, qualityRange, qualityDistribution, expectedOverQuality, roundItemPrice, expectedSalePrice,
   xpItems, xpComponent, xpAssembly, componentDiesAt, itemsDiesAt,
   slerp, skillModifier, gatheringCycle,
   combatXpPerSwing, attackRates,
