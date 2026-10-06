@@ -44,12 +44,17 @@ function rarityOf(quality) {
 
 /* ---- crafting quality roll -------------------------------------------- *
  * crafting_recipes.js:70 get_quality_range, :28 get_crafting_quality_caps  */
+/* quality_precision: Recipe base = 4 (components, capes); EquipmentRecipe overrides to 2
+ * (crafting_recipes.js:224), so assembled equipment can roll e.g. 202. */
+function qualityPrecision(isEquipment) { return isEquipment ? 2 : 4; }
+
 function qualityRange({ skillLevel, skillMaxLevel, tierDiff, componentQuality = null, isEquipment = false }) {
+  const precision = qualityPrecision(isEquipment);
   const cap = isEquipment
     ? Math.min(Math.round(100 + 2.8 * skillLevel), 250)
     : Math.min(Math.round(100 + 2 * skillLevel), 200);
-  // round_quality(clamp(..), 4) - both ends are snapped to the precision grid
-  const clamp = v => Math.round(Math.max(10, Math.min(cap, Math.round(v))) / 4) * 4;
+  // round_quality(clamp(..), precision) - both ends are snapped to the precision grid
+  const clamp = v => Math.round(Math.max(10, Math.min(cap, Math.round(v))) / precision) * precision;
   if (componentQuality != null) {
     const q = (3 * skillLevel - skillMaxLevel) + 50 + componentQuality + 10 * tierDiff;
     return [clamp(q - 15), clamp(q + 15)];
@@ -62,7 +67,7 @@ function qualityRange({ skillLevel, skillMaxLevel, tierDiff, componentQuality = 
 /* ---- weighted crafting XP over the quality roll ------------------------ *
  * crafting_recipes.js:174 roll_quality: random_range (misc.js:66, an INTEGER
  * Math.round(rand*(max-min)+min), so the two end values carry half weight)
- * then round_quality to a multiple of quality_precision (4, Math.round so a
+ * then round_quality to a multiple of quality_precision (4, or 2 for equipment; Math.round so a
  * .5 tie rounds up). Rarity (and so XP, whose taper depends on sqrt(rarity))
  * is a step function of that quality, so the weighted mean has to be taken
  * over the XP itself - averaging the multiplier first and plugging it in
@@ -83,9 +88,9 @@ function qualityDistribution([lo, hi], precision = 4) {
  * @param xpAt (rarityMult) -> xp for one roll at that rarity
  * @returns {xp, meanQuality, meanRarityMult, range}
  */
-function expectedOverQuality(range, xpAt) {
+function expectedOverQuality(range, xpAt, precision = 4) {
   let xp = 0, meanQuality = 0, meanRarityMult = 0;
-  for (const { quality, p } of qualityDistribution(range)) {
+  for (const { quality, p } of qualityDistribution(range, precision)) {
     const m = rarityOf(quality).mult;
     xp += p * xpAt(m);
     meanQuality += p * quality;
@@ -238,7 +243,7 @@ function round1(x) { return Math.round(10 * x) / 10; }
 
 module.exports = {
   totalXpToReach, levelFromXp, xpToNextLevel, skillDisplayName,
-  rarityOf, qualityRange, qualityDistribution, expectedOverQuality, roundItemPrice, expectedSalePrice,
+  rarityOf, qualityRange, qualityPrecision, qualityDistribution, expectedOverQuality, roundItemPrice, expectedSalePrice,
   xpItems, xpComponent, xpAssembly, componentDiesAt, itemsDiesAt,
   slerp, skillModifier, gatheringCycle,
   combatXpPerSwing, attackRates,
