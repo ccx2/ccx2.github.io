@@ -320,8 +320,8 @@ function chainCost(game, character, costs, producers, pick, componentTypeIndex, 
     const maxTier = Math.max(...chosenTiers);
     const q = assemblyQuality(sk ? sk.def.max : 60, qm, p, lv, chosenTiers, chosenQ, maxTier);
     if (q) {
-      const e = F.expectedOverQuality(q.range, m => F.xpAssembly({ totalTier, maxTier, rarityMult: m, skillLevel: lv }));
-      own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = q.range; out.qualityDist = F.qualityDistribution(q.range);
+      const e = F.expectedOverQuality(q.range, m => F.xpAssembly({ totalTier, maxTier, rarityMult: m, skillLevel: lv }), F.qualityPrecision(true));
+      own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = q.range; out.qualityDist = F.qualityDistribution(q.range, F.qualityPrecision(true));
       out.equipBaseValue = 1.25 * componentValueSum;
     } else {
       own = F.xpAssembly({ totalTier, maxTier, rarityMult: qm.flat, skillLevel: lv });

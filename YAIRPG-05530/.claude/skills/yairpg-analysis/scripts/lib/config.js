@@ -32,7 +32,7 @@ const ASSUMPTIONS = {
     claim: "Crafting happens at the station named in config.station.",
     why_unverified: "Station tier feeds the quality roll (station_tier - result_tier), which feeds rarity, " +
                     "which feeds crafting XP and item value. Crafting XP is the weighted mean over the game's own quality roll " +
-                    "(uniform integer in get_quality_range, snapped to 4), not a flat rarity - so a better station " +
+                    "(uniform integer in get_quality_range, snapped to 4, or 2 for assembled equipment), not a flat rarity - so a better station " +
                     "or higher skill moves XP and can change rankings. Equipment assembly uses each component's " +
                     "EXPECTED quality as its input, not the full spread. Skill bonus levels (buffs/gear) are not in the save " +
                     "and so are not in the quality formula.",
