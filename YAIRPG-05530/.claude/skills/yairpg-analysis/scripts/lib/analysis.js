@@ -249,6 +249,27 @@ function componentBaseValue(game, producers, name) {
   return F.componentValue({ matValue: mat.value, tier: mat.tier, count: p.count });
 }
 
+/** Station tier for a skill from config.station.tiers (keys are lowercase skill names), or null when no
+ *  station table was supplied (falls back to the flat rarity). A skill the station lacks counts as tier 1
+ *  - recorded in qm.missing so the caller can surface it. ASSUMPTION[A4]. */
+function stationTier(qm, skill) {
+  if (!qm || !qm.stationTiers) return null;
+  const t = qm.stationTiers[String(skill).toLowerCase()];
+  if (t == null) { (qm.missing = qm.missing || new Set()).add(skill); return 1; }
+  return t;
+}
+
+/** crafting_recipes.js:227 - equipment quality rolls around the TIER-weighted mean of its components'
+ *  qualities (get_component_stats.weighted_quality). We feed in each component's expected quality, so
+ *  the spread of the component rolls is not carried through (only the assembly roll's own spread is). */
+function assemblyQuality(skillMax, qm, p, lv, tiers, qualities, maxTier) {
+  const st = stationTier(qm, p.skill);
+  if (st == null || qualities.some(x => x == null)) return null;
+  const totalTier = tiers.reduce((a, b) => a + b, 0);
+  const weighted = tiers.reduce((a, t, i) => a + t * qualities[i], 0) / totalTier;
+  return { range: F.qualityRange({ skillLevel: lv, skillMaxLevel: skillMax, tierDiff: st - maxTier, componentQuality: weighted, isEquipment: true }) };
+}
+
 /**
  * Resolve a craftable down to base resources.
  * @param componentTypeIndex slot-type -> candidate result names (equipment only)
@@ -262,7 +283,7 @@ function componentBaseValue(game, producers, name) {
  *           actions as a training source per skill. Never sum ownXp across
  *           the chain; it deliberately excludes recursed sub-craft xp.
  */
-function chainCost(game, character, costs, producers, pick, componentTypeIndex, name, rarity, depth = 0, memo = {}, unresolved = new Set()) {
+function chainCost(game, character, costs, producers, pick, componentTypeIndex, name, qm, depth = 0, memo = {}, unresolved = new Set()) {
   if (costs[name]) return { realMinutes: costs[name].realMinutes, xp: {}, ownXp: {}, ok: true };
   if (memo[name]) return memo[name];
   if (depth > 8) return { ok: false, why: "recursion depth" };
@@ -279,27 +300,34 @@ function chainCost(game, character, costs, producers, pick, componentTypeIndex, 
        filled by whichever concrete candidate is cheapest to produce right
        now - the game lets you pick any material for either slot, and a
        real player picks the cheap one, not a fixed example. */
-    const chosenTiers = [];
+    const chosenTiers = [], chosenQ = [];
     for (const slotType of p.componentTypes) {
       const candidates = componentTypeIndex[slotType] || [];
       let best = null, bestTier = null;
       for (const cand of candidates) {
-        const cc = chainCost(game, character, costs, producers, pick, componentTypeIndex, cand, rarity, depth + 1, memo, unresolved);
+        const cc = chainCost(game, character, costs, producers, pick, componentTypeIndex, cand, qm, depth + 1, memo, unresolved);
         if (cc.ok && (!best || cc.realMinutes < best.realMinutes)) { best = cc; bestTier = tierOf(game, cand); }
       }
       if (!best) { unresolved.add("component_type:" + slotType); return { ok: false, why: "no candidate for component type: " + slotType }; }
       out.realMinutes += best.realMinutes;
       for (const [s, v] of Object.entries(best.xp)) out.xp[s] = (out.xp[s] || 0) + v;
       chosenTiers.push(bestTier || 1);
+      chosenQ.push(best.meanQuality);
     }
     const totalTier = chosenTiers.reduce((a, b) => a + b, 0);
     const maxTier = Math.max(...chosenTiers);
-    own = F.xpAssembly({ totalTier, maxTier, rarityMult: rarity, skillLevel: lv });
+    const q = assemblyQuality(sk ? sk.def.max : 60, qm, p, lv, chosenTiers, chosenQ, maxTier);
+    if (q) {
+      const e = F.expectedOverQuality(q.range, m => F.xpAssembly({ totalTier, maxTier, rarityMult: m, skillLevel: lv }));
+      own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = q.range;
+    } else {
+      own = F.xpAssembly({ totalTier, maxTier, rarityMult: qm.flat, skillLevel: lv });
+    }
   } else {
     for (const inp of p.inputs) {
       const id = inp.id || pick(inp.type);
       if (!id) { unresolved.add(inp.type); return { ok: false, why: "unmapped material_type: " + inp.type }; }
-      const c = chainCost(game, character, costs, producers, pick, componentTypeIndex, id, rarity, depth + 1, memo, unresolved);
+      const c = chainCost(game, character, costs, producers, pick, componentTypeIndex, id, qm, depth + 1, memo, unresolved);
       if (!c.ok) return c;
       out.realMinutes += c.realMinutes * inp.count;
       for (const [s, v] of Object.entries(c.xp)) out.xp[s] = (out.xp[s] || 0) + v * inp.count;
@@ -308,7 +336,14 @@ function chainCost(game, character, costs, producers, pick, componentTypeIndex, 
     if (p.kind === "items") own = F.xpItems(p.recipeLevelMax || 1, lv);
     else {
       const t = tierOf(game, name);
-      if (t) own = F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: rarity, skillLevel: lv });
+      if (t) {
+        const tierDiff = stationTier(qm, p.skill);
+        if (tierDiff != null) {
+          const range = F.qualityRange({ skillLevel: lv, skillMaxLevel: sk ? sk.def.max : 60, tierDiff: tierDiff - t });
+          const e = F.expectedOverQuality(range, m => F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: m, skillLevel: lv }));
+          own = e.xp; out.meanQuality = e.meanQuality; out.meanRarityMult = e.meanRarityMult; out.quality = range;
+        } else own = F.xpComponent({ resultTier: t, materialCount: p.count, rarityMult: qm.flat, skillLevel: lv });
+      }
     }
   }
   if (p.skill) {
@@ -334,29 +369,35 @@ function chainCost(game, character, costs, producers, pick, componentTypeIndex, 
   return out;
 }
 
-function craftingRates(game, character, costs, { rarity = 1.1 } = {}) {
+function craftingRates(game, character, costs, { rarity = 1.1, stationTiers = null } = {}) {
+  /* stationTiers (config.station.tiers) switches XP from the flat `rarity` to the quality-roll weighted
+     mean (see chainCost). Without it the old flat-rarity behaviour is kept, so a caller that has no
+     station configured still gets a number rather than a crash. */
+  const qm = { flat: rarity, stationTiers };
   const { producers, componentTypeIndex } = buildProducers(game);
   const pick = typePicker(game, costs, producers);
   const memo = {}, unresolved = new Set();
   const rows = [];
   for (const name of Object.keys(producers)) {
-    const c = chainCost(game, character, costs, producers, pick, componentTypeIndex, name, rarity, 0, memo, unresolved);
+    const c = chainCost(game, character, costs, producers, pick, componentTypeIndex, name, qm, 0, memo, unresolved);
     if (!c.ok || !isFinite(c.realMinutes) || c.realMinutes <= 0) continue;
     const total = Object.values(c.xp).reduce((a, b) => a + b, 0);
     if (total <= 0) continue;
     // A literal items.js value wins if present; otherwise price a generated
-    // component with the same rarity roll already applied to its XP above
-    // (ASSUMPTION[A4]: flat rarity, not a full quality-distribution average).
+    // component with the same weighted-mean rarity multiplier its XP used
+    // (flat `rarity` only when no station table was supplied). The quality/100
+    // factor of the real sale price is still not applied - pre-existing gap.
     const literalValue = (game.items[name] || {}).value;
     const compBase = literalValue ? null : componentBaseValue(game, producers, name);
-    const value = literalValue || (compBase != null ? compBase * rarity : 0);
+    const value = literalValue || (compBase != null ? compBase * (c.meanRarityMult || rarity) : 0);
     rows.push({
       product: name, realMinutes: c.realMinutes, totalXp: total,
-      perRealMin: total / c.realMinutes, xp: c.xp, ownXp: c.ownXp, value
+      perRealMin: total / c.realMinutes, xp: c.xp, ownXp: c.ownXp, value,
+      quality: c.quality, meanQuality: c.meanQuality, meanRarityMult: c.meanRarityMult
     });
   }
   rows.sort((a, b) => b.perRealMin - a.perRealMin);
-  return { rows, unresolved: [...unresolved] };
+  return { rows, unresolved: [...unresolved], stationMissing: qm.missing ? [...qm.missing] : [] };
 }
 
 /* ---------------- consumable / sell pipelines -------------------------- *

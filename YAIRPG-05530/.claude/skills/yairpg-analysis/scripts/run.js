@@ -150,7 +150,7 @@ function bestSources(game, character, cfg, { freeGlass = true } = {}) {
   const types = A.locationTypeRates(game);
   const combat = A.combatRates(game, { playerSpeed });
   const costs = A.baseCosts(game, character, { butcheringMult: butchering, playerSpeed, freeGlass });
-  const craft = A.craftingRates(game, character, costs);
+  const craft = A.craftingRates(game, character, costs, { stationTiers: cfg.station && cfg.station.tiers });
 
   const best = {};
   const offer = (skill, perRealMin, label, kind) => {
